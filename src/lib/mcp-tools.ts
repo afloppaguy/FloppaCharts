@@ -29,6 +29,9 @@ function brief(g: Game) {
     playing_7d_ago: g.p_7d,
     growth_vs: b ? { baseline: b.value, window: b.label } : null,
     rise_score: g.rise_score,
+    visits_per_hour: g.visit_rate,
+    pace_vs_lifetime: g.pace,
+    est_session_minutes: g.est_session_min,
     peak_playing: g.peak_playing,
     visits: g.visits,
     favorites: g.favorites,
@@ -46,13 +49,14 @@ const filterProps = {
   min: { type: "number", description: "Minimum concurrent players (default 10)" },
   max: { type: "number", description: "Maximum concurrent players" },
   maxAge: { type: "number", description: "Only games created within this many days" },
+  updatedWithin: { type: "number", description: "Only games whose developer published an update within this many days" },
   genre: { type: "string", description: "Roblox top-level genre, e.g. Simulation, Survival, RPG" },
   sub: { type: "string", description: "Roblox sub-genre, e.g. Physics Sim, Tower Defense, Incremental Simulator" },
   minLike: { type: "number", description: "Minimum like ratio percent (needs 20+ votes)" },
   chart: { type: "string", description: "Only games currently on this Roblox chart, e.g. up-and-coming, top-trending" },
   tag: { type: "string", description: "Only games carrying this tag" },
   watch: { type: "boolean", description: "Only watchlisted games" },
-  sort: { type: "string", enum: ["rise", "g24", "g7d", "playing", "new", "like", "visits", "updated"], description: "rise = players gained relative to size (default)" },
+  sort: { type: "string", enum: ["rise", "fall", "seen", "pace", "session", "g24", "g7d", "playing", "new", "like", "visits", "updated"], description: "rise = players gained relative to size (default); pace = current visit rate against the game's lifetime average; session = longest estimated session length" },
   page: { type: "number", description: "1-based page" },
   pageSize: { type: "number", description: "Games per page, up to 200 (default 50)" },
 };
@@ -61,7 +65,7 @@ export const TOOLS: Tool[] = [
   {
     name: "list_games",
     description:
-      "List tracked Roblox games with filters, sorting and paging. This is the full dataset (thousands of games), not a top-10: page through it. Default sort is fastest rising. growth_vs.window says what the growth baseline is ('24h', '1h', or 'since tracked' when history is short).",
+      "List tracked Roblox games with filters, sorting and paging. This is the full dataset (thousands of games), not a top-10: page through it. Default sort is fastest rising. growth_vs.window says what the growth baseline is ('24h', '1h', or 'since tracked' when history is short). pace_vs_lifetime is the game's visit rate right now divided by its lifetime average rate (2 = twice its usual pace) and needs no long history. est_session_minutes is players online divided by visits per minute: an estimate of how long one visit lasts, a rough stand-in for engagement.",
     inputSchema: { type: "object", properties: filterProps },
     run: async (a) => {
       const f: Filters = { ...a, min: a.min ?? 10 };

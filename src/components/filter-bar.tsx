@@ -44,7 +44,7 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   }
 
-  const active = ["q", "min", "maxAge", "genre", "sub", "minLike", "sort", "chart", "tag"].some((k) => sp.get(k));
+  const active = ["q", "min", "maxAge", "updatedWithin", "genre", "sub", "minLike", "sort", "chart", "tag"].some((k) => sp.get(k));
   const chart = sp.get("chart");
   const tag = sp.get("tag");
   const sub = sp.get("sub");
@@ -88,6 +88,12 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
         <option value="60">Under 60 days</option>
         <option value="90">Under 90 days</option>
         <option value="365">Under 1 year</option>
+      </Select>
+      <Select label="Last updated" value={sp.get("updatedWithin") ?? ""} onChange={(v) => set({ updatedWithin: v })}>
+        <option value="">Any update date</option>
+        <option value="1">Updated today</option>
+        <option value="7">Updated this week</option>
+        <option value="30">Updated this month</option>
       </Select>
       <Select label="Genre" value={sp.get("genre") ?? ""} onChange={(v) => set({ genre: v })}>
         <option value="">All genres</option>

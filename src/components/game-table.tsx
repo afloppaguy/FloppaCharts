@@ -27,6 +27,21 @@ export function Growth({ g, className }: { g: Game; className?: string }) {
   );
 }
 
+/** Visit rate right now against the game's lifetime average: x2 means twice its usual pace. */
+export function Pace({ value, className }: { value: number | null; className?: string }) {
+  if (value == null) return <span className={cn("text-muted-foreground/60", className)}>–</span>;
+  return (
+    <span
+      className={cn("tabular-nums", value >= 1.5 ? "text-emerald-400" : value <= 0.6 ? "text-rose-400" : "text-muted-foreground", className)}
+      title={`Getting visits at ${value.toFixed(1)} times its lifetime average rate`}
+    >
+      ×{value >= 10 ? value.toFixed(0) : value.toFixed(1)}
+    </span>
+  );
+}
+
+export const sessionText = (min: number | null) => (min == null ? "–" : min >= 60 ? `${(min / 60).toFixed(1)}h` : `${Math.round(min)}m`);
+
 export function GameIcon({ url, size, className }: { url?: string; size?: number; className?: string }) {
   const style = size ? { width: size, height: size } : undefined;
   return url ? (
@@ -63,7 +78,7 @@ function Empty() {
 /** Dense rows: best for comparing numbers. */
 async function GameList({ games, compact }: { games: Game[]; compact: boolean }) {
   const icons = await iconsFor(games.map((g) => Number(g.universe_id)));
-  const cols = compact ? "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem]" : "grid-cols-[minmax(0,1fr)_5rem_5rem_4rem_4rem_5rem_9rem_3.75rem]";
+  const cols = compact ? "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem]" : "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem_3.5rem_3.5rem_4.5rem_8rem_3.75rem]";
   const head = "text-right text-xs font-normal text-muted-foreground";
   return (
     <div role="table" className="text-sm">
@@ -85,6 +100,12 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
         </span>
         {!compact && (
           <>
+            <span role="columnheader" className={head} title="Visit rate right now against the game's lifetime average. x2 = twice its usual pace.">
+              Pace
+            </span>
+            <span role="columnheader" className={head} title="Estimated length of one visit: players online divided by visits per minute">
+              Session
+            </span>
             <span role="columnheader" className={head}>
               Visits
             </span>
@@ -113,6 +134,8 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
             <span className="text-right tabular-nums text-muted-foreground">{age(g.created_at)}</span>
             {!compact && (
               <>
+                <Pace value={g.pace} className="text-right" />
+                <span className="text-right tabular-nums text-muted-foreground">{sessionText(g.est_session_min)}</span>
                 <span className="text-right tabular-nums text-muted-foreground">{num(g.visits)}</span>
                 <span className="truncate text-xs text-muted-foreground">{g.genre_l2 || g.genre_l1 || ""}</span>
                 <span className="relative z-10 flex justify-end">
@@ -153,6 +176,12 @@ async function GameGrid({ games, compact }: { games: Game[]; compact: boolean })
                 <span className={cn("tabular-nums", likeColor(like))}>{like != null ? `${like}%` : "–"}</span>
                 <span aria-hidden>·</span>
                 <span className="tabular-nums">{age(g.created_at)}</span>
+                {g.pace != null && g.pace >= 1.5 && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <Pace value={g.pace} />
+                  </>
+                )}
                 {!compact && (g.genre_l2 || g.genre_l1) && (
                   <>
                     <span aria-hidden>·</span>

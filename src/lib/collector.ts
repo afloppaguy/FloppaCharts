@@ -104,7 +104,29 @@ type Baseline = {
   p1h: number | null;
   p24: number | null;
   p7d: number | null;
+  prev_ts: number | null;
+  prev_visits: number | null;
 };
+
+/**
+ * Signals that need no long history, only two snapshots:
+ *   visit_rate       visits per hour right now
+ *   pace             that rate against the game's lifetime average rate (2 = twice its usual pace)
+ *   est_session_min  players online divided by visits per minute: roughly how long a visit lasts
+ */
+function liveSignals(d: GameDetail, b: Baseline | undefined, t: number, createdAt: number | null) {
+  if (!b?.prev_ts || b.prev_visits == null) return { rate: null, pace: null, session: null };
+  const hours = (t - Number(b.prev_ts)) / 3600;
+  const gained = d.visits - Number(b.prev_visits);
+  if (hours <= 0 || gained < 0) return { rate: null, pace: null, session: null };
+  const rate = gained / hours;
+  const lifeHours = createdAt ? Math.max((t - createdAt) / 3600, 24) : null;
+  const lifetimeRate = lifeHours ? d.visits / lifeHours : null;
+  const pace = lifetimeRate && d.visits >= 1000 ? Math.min(Math.round((rate / lifetimeRate) * 100) / 100, 999) : null;
+  // Too few visits in the window makes the estimate meaningless.
+  const session = gained >= 20 && d.playing > 0 ? Math.min(Math.round(((d.playing * 60) / rate) * 10) / 10, 600) : null;
+  return { rate: Math.round(rate * 10) / 10, pace, session };
+}
 
 /** Write fresh details for a batch of games: one row update + one snapshot each. */
 async function saveDetails(details: GameDetail[], votes: Map<number, { up: number; down: number }>, source?: string) {
@@ -117,7 +139,9 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
             (SELECT 1 FROM watchlist w WHERE w.universe_id = g.universe_id) AS watched,
             (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 3 * 3600} AND ${t - 3000} ORDER BY s.ts DESC LIMIT 1) AS p1h,
             (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 48 * 3600} AND ${t - 23 * 3600} ORDER BY s.ts DESC LIMIT 1) AS p24,
-            (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 10 * 86400} AND ${t - 6.5 * 86400} ORDER BY s.ts DESC LIMIT 1) AS p7d
+            (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 10 * 86400} AND ${t - 6.5 * 86400} ORDER BY s.ts DESC LIMIT 1) AS p7d,
+            (SELECT ts FROM snapshots s WHERE s.universe_id = g.universe_id AND s.visits IS NOT NULL AND s.ts BETWEEN ${t - 6 * 3600} AND ${t - 1500} ORDER BY s.ts DESC LIMIT 1) AS prev_ts,
+            (SELECT visits FROM snapshots s WHERE s.universe_id = g.universe_id AND s.visits IS NOT NULL AND s.ts BETWEEN ${t - 6 * 3600} AND ${t - 1500} ORDER BY s.ts DESC LIMIT 1) AS prev_visits
      FROM games g WHERE g.universe_id IN (${ids.join(",")})`,
   );
   for (const r of rows) base.set(Number(r.universe_id), r);
@@ -134,12 +158,13 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
     const inCharts = !!b && b.charts !== "[]";
     const next = t + pollInterval({ watched: !!b?.watched, inCharts, playing: d.playing, visits: d.visits, score, createdAt });
     const peak = Math.max(b?.peak_playing ?? 0, d.playing);
+    const live = liveSignals(d, b, t, createdAt);
 
     stmts.push({
       sql: `INSERT INTO games (universe_id, root_place_id, name, description, creator_id, creator_name, creator_type, genre_l1, genre_l2, max_players,
               created_at, updated_at, playing, visits, favorites, up_votes, down_votes, peak_playing, p_first, p_1h, p_24h, p_7d, rise_score,
-              source, first_seen, last_polled, next_poll)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              source, first_seen, last_polled, next_poll, visit_rate, pace, est_session_min)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(universe_id) DO UPDATE SET
               root_place_id = excluded.root_place_id, name = excluded.name, description = excluded.description,
               creator_id = excluded.creator_id, creator_name = excluded.creator_name, creator_type = excluded.creator_type,
@@ -149,13 +174,15 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
               up_votes = excluded.up_votes, down_votes = excluded.down_votes,
               peak_playing = excluded.peak_playing, p_first = COALESCE(p_first, excluded.p_first),
               p_1h = excluded.p_1h, p_24h = excluded.p_24h, p_7d = excluded.p_7d, rise_score = excluded.rise_score,
-              last_polled = excluded.last_polled, next_poll = excluded.next_poll`,
+              last_polled = excluded.last_polled, next_poll = excluded.next_poll,
+              visit_rate = COALESCE(excluded.visit_rate, visit_rate), pace = COALESCE(excluded.pace, pace),
+              est_session_min = COALESCE(excluded.est_session_min, est_session_min)`,
       args: [
         d.id, d.rootPlaceId, d.name ?? "", d.description ?? null, d.creator?.id ?? null, d.creator?.name ?? null, d.creator?.type ?? null,
         d.genre_l1 || null, d.genre_l2 || null, d.maxPlayers ?? null, createdAt, iso(d.updated), d.playing, d.visits, d.favoritedCount ?? 0,
         // Votes come from a separate endpoint; when it has no answer, keep what is stored.
         v?.up ?? b?.up_votes ?? 0, v?.down ?? b?.down_votes ?? 0, peak, pFirst, b?.p1h ?? null, b?.p24 ?? null, b?.p7d ?? null, score,
-        source ?? "charts", t, t, next,
+        source ?? "charts", t, t, next, live.rate, live.pace, live.session,
       ],
     });
     // Dead games are not worth a snapshot row every day.

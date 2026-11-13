@@ -5,7 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { TagGameButton } from "@/components/ai-buttons";
 import { BackfillButton, Notes, Tags, WatchButton } from "@/components/game-actions";
 import { getApiKey } from "@/lib/ai";
-import { GameIcon, Growth } from "@/components/game-table";
+import { GameIcon, Growth, Pace, sessionText } from "@/components/game-table";
 import { HistoryChart, type Point } from "@/components/history-chart";
 import { Section } from "@/components/page-parts";
 import { now } from "@/lib/db";
@@ -91,6 +91,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/compare?ids=${id}`} className={buttonVariants({ variant: "outline" })}>
+            Compare
+          </Link>
           <WatchButton id={id} watched={!!g.watched} />
           {g.root_place_id && (
             <a href={webUrl(g.root_place_id)} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "icon" })} title="Open on roblox.com" aria-label="Open on roblox.com">
@@ -105,13 +108,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Playing now" value={num(g.playing)} sub={<Growth g={g} />} />
         <Stat label="Peak seen" value={num(g.peak_playing)} />
         <Stat label="Visits" value={num(g.visits)} />
         <Stat label="Like ratio" value={like != null ? `${like}%` : "–"} sub={`${num(g.up_votes + g.down_votes)} votes`} />
-        <Stat label="Favorites" value={num(g.favorites)} />
+        <Stat label="Favorites" value={num(g.favorites)} sub={g.visits > 0 ? `${((g.favorites / g.visits) * 1000).toFixed(1)} per 1K visits` : undefined} />
         <Stat label="Server size" value={g.max_players ?? "–"} />
+        <Stat label="Visits per hour" value={g.visit_rate != null ? num(Math.round(g.visit_rate)) : "–"} sub="right now" />
+        <Stat label="Pace vs lifetime" value={<Pace value={g.pace} />} sub="1.0 is its usual rate" />
+        <Stat label="Est. session" value={sessionText(g.est_session_min)} sub="players ÷ visits per minute" />
+        <Stat label="Lifetime visits a day" value={g.created_at ? num(Math.round(g.visits / Math.max((now() - g.created_at) / 86400, 1))) : "–"} />
       </div>
 
       <section className="grid gap-4">

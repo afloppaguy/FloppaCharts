@@ -1,6 +1,7 @@
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { getClient, pickModel, recordUsage } from "./ai";
+import { nowMs } from "./clock";
 import { now, q, run } from "./db";
 
 // "My games": analytics for games you own, read from Roblox's Open Cloud
@@ -147,7 +148,7 @@ export async function getMyGame(universeId: number) {
 export async function loadDashboard(universeId: number, days = 28) {
   const game = await getMyGame(universeId);
   if (!game) throw new Error("That game is not connected.");
-  const end = new Date();
+  const end = new Date(nowMs());
   end.setUTCHours(0, 0, 0, 0); // today's UTC midnight, exclusive: only complete days
   const iso = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z");
   const endTs = Math.floor(end.getTime() / 1000);

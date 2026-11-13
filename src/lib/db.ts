@@ -1,5 +1,6 @@
 import { createClient, type Client, type InValue } from "@libsql/client";
 import { mkdirSync } from "node:fs";
+import { nowMs, syncClock } from "./clock";
 
 // One database for everything. Locally it is a SQLite file; in production
 // set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN and the same code talks to Turso.
@@ -167,22 +168,40 @@ const DEFAULT_PRESETS: { name: string; description: string; filters: Record<stri
   { name: "Tiny but loved", description: "10-300 players with a 90%+ like ratio", filters: { min: "10", max: "300", minLike: "90", sort: "rise" } },
   { name: "Breakouts this week", description: "Any age, biggest 7-day growth", filters: { min: "100", sort: "g7d" } },
   { name: "Solo-dev sized", description: "Under 60 days old, 50-2,000 players", filters: { maxAge: "60", min: "50", max: "2000", sort: "rise" } },
+  { name: "Updated and climbing", description: "Published an update in the last 7 days and is gaining players", filters: { updatedWithin: "7", min: "50", sort: "rise" } },
+  { name: "Above their usual pace", description: "Getting visits faster than their lifetime average", filters: { min: "50", sort: "pace" } },
+  { name: "Losing players", description: "100+ players and falling fastest", filters: { min: "100", sort: "fall" } },
+  { name: "Newly spotted", description: "Games the tracker found most recently", filters: { min: "10", sort: "seen" } },
 ];
 
 export function ready(): Promise<void> {
   if (!g.__radarSchema) {
     g.__radarSchema = (async () => {
       const c = db();
+      await syncClock();
       for (const sql of SCHEMA) await c.execute(sql);
-      const n = await c.execute("SELECT COUNT(*) AS n FROM presets");
-      if (Number(n.rows[0].n) === 0) {
-        for (const p of DEFAULT_PRESETS) {
+      // Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS".
+      for (const col of ["visit_rate REAL", "pace REAL", "est_session_min REAL"]) {
+        try {
+          await c.execute(`ALTER TABLE games ADD COLUMN ${col}`);
+        } catch {
+          // already there
+        }
+      }
+      // Built-in presets are added once each; deleting one keeps it deleted.
+      const seeded = new Set<string>(JSON.parse(String((await c.execute("SELECT value FROM kv WHERE key = 'seeded_presets'")).rows[0]?.value ?? "[]")));
+      const have = new Set((await c.execute("SELECT name FROM presets")).rows.map((r) => String(r.name)));
+      for (const p of DEFAULT_PRESETS) {
+        if (seeded.has(p.name)) continue;
+        if (!have.has(p.name)) {
           await c.execute({
             sql: "INSERT INTO presets (name, description, filters, src) VALUES (?, ?, ?, 'default')",
             args: [p.name, p.description, JSON.stringify(p.filters)],
           });
         }
+        seeded.add(p.name);
       }
+      await c.execute({ sql: "INSERT INTO kv (key, value) VALUES ('seeded_presets', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [JSON.stringify([...seeded])] });
     })();
   }
   return g.__radarSchema;
@@ -209,7 +228,7 @@ export async function kvSet(key: string, value: string) {
   await run("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value]);
 }
 
-export const now = () => Math.floor(Date.now() / 1000);
+export const now = () => Math.floor(nowMs() / 1000);
 
 /** Every data change made by a person or an AI is logged so it can be undone. */
 export async function logEdit(actor: string, action: string, detail: unknown, undo?: { sql: string; args: InValue[] }[]) {

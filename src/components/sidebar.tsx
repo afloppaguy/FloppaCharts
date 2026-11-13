@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Cat, ChartLine, Compass, Eye, History, Home, Lightbulb, Settings, Shapes } from "lucide-react";
+import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes } from "lucide-react";
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { ago, num } from "@/lib/format";
@@ -17,6 +17,7 @@ export async function Sidebar() {
     { href: "/", match: "/", label: "Home", icon: Home },
     { href: "/games", match: "/games", label: "Explore", icon: Compass },
     { href: "/niches", match: "/niches", label: "Niches", icon: Shapes },
+    { href: "/compare", match: "/compare", label: "Compare", icon: GitCompareArrows },
     { href: "/watchlist", match: "/watchlist", label: "Watchlist", icon: Eye },
     { href: "/alerts", match: "/alerts", label: "Alerts", icon: Bell, badge: status?.unreadAlerts || 0 },
   ];

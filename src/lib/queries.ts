@@ -26,6 +26,9 @@ export type Game = {
   p_24h: number | null;
   p_7d: number | null;
   rise_score: number;
+  visit_rate: number | null; // visits per hour right now
+  pace: number | null; // visit rate against the game's lifetime average (2 = twice its usual pace)
+  est_session_min: number | null; // players online / visits per minute
   charts: string;
   source: string;
   first_seen: number;
@@ -39,6 +42,7 @@ export type Filters = {
   min?: number;
   max?: number;
   maxAge?: number; // days since creation
+  updatedWithin?: number; // days since the developer last published an update
   genre?: string;
   sub?: string; // Roblox sub-genre (genre_l2), falling back to the top-level genre
   minLike?: number; // percent
@@ -54,6 +58,10 @@ const SORTS: Record<string, string> = {
   rise: "g.rise_score DESC",
   g24: "CASE WHEN g.p_24h IS NULL THEN -1e9 ELSE (g.playing - g.p_24h) * 1.0 / MAX(g.p_24h, 10) END DESC",
   g7d: "CASE WHEN g.p_7d IS NULL THEN -1e9 ELSE (g.playing - g.p_7d) * 1.0 / MAX(g.p_7d, 10) END DESC",
+  fall: "g.rise_score ASC",
+  seen: "g.first_seen DESC",
+  pace: "COALESCE(g.pace, -1) DESC",
+  session: "COALESCE(g.est_session_min, -1) DESC",
   playing: "g.playing DESC",
   new: "g.created_at DESC",
   like: "g.up_votes * 1.0 / MAX(g.up_votes + g.down_votes, 1) DESC",
@@ -64,6 +72,10 @@ export const SORT_LABELS: Record<string, string> = {
   rise: "Rising fastest",
   g24: "24h growth %",
   g7d: "7d growth %",
+  fall: "Falling fastest",
+  seen: "Newly spotted",
+  pace: "Pace vs lifetime",
+  session: "Longest sessions",
   playing: "Most players",
   new: "Newest",
   like: "Like ratio",
@@ -79,6 +91,7 @@ export function parseFilters(sp: Record<string, string | string[] | undefined>):
     min: n("min"),
     max: n("max"),
     maxAge: n("maxAge"),
+    updatedWithin: n("updatedWithin"),
     genre: s("genre") || undefined,
     sub: s("sub") || undefined,
     minLike: n("minLike"),
@@ -100,6 +113,7 @@ export async function listGames(f: Filters): Promise<{ games: Game[]; total: num
   if (f.min != null) { where.push("g.playing >= ?"); args.push(f.min); }
   if (f.max != null) { where.push("g.playing <= ?"); args.push(f.max); }
   if (f.maxAge != null) { where.push("g.created_at >= ?"); args.push(now() - f.maxAge * 86400); }
+  if (f.updatedWithin != null) { where.push("g.updated_at >= ?"); args.push(now() - f.updatedWithin * 86400); }
   if (f.genre) { where.push("g.genre_l1 = ?"); args.push(f.genre); }
   if (f.sub) { where.push("COALESCE(NULLIF(g.genre_l2, ''), g.genre_l1) = ?"); args.push(f.sub); }
   if (f.minLike != null) {

@@ -109,11 +109,17 @@ export async function getVotes(ids: number[]): Promise<Map<number, { up: number;
 
 export async function getIcons(ids: number[]): Promise<Map<number, string>> {
   const m = new Map<number, string>();
-  for (let i = 0; i < ids.length; i += 100) {
-    const d = await rbx<{ data: { targetId: number; imageUrl: string | null }[] }>(
-      `https://thumbnails.roblox.com/v1/games/icons?size=256x256&format=Png&isCircular=false&universeIds=${ids.slice(i, i + 100).join(",")}`,
-    );
-    for (const t of d.data ?? []) if (t.imageUrl) m.set(t.targetId, t.imageUrl);
+  // Roblox renders the large size on demand and answers "pending" until it is
+  // ready, so anything missing falls back to the small size it always has.
+  for (const size of ["256x256", "150x150"]) {
+    const missing = ids.filter((id) => !m.has(id));
+    for (let i = 0; i < missing.length; i += 100) {
+      const d = await rbx<{ data: { targetId: number; imageUrl: string | null }[] }>(
+        `https://thumbnails.roblox.com/v1/games/icons?size=${size}&format=Png&isCircular=false&universeIds=${missing.slice(i, i + 100).join(",")}`,
+      );
+      for (const t of d.data ?? []) if (t.imageUrl) m.set(t.targetId, t.imageUrl);
+    }
+    if (m.size === ids.length) break;
   }
   return m;
 }

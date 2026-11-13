@@ -223,3 +223,27 @@ export async function deleteChatAction(formData: FormData) {
   revalidatePath("/ideas");
   redirect("/ideas");
 }
+
+// ---- Compare ----
+
+export async function addToCompare(formData: FormData) {
+  const ids = String(formData.get("ids") ?? "").split(",").filter(Boolean);
+  const ref = String(formData.get("ref") ?? "").trim();
+  let error = "";
+  try {
+    let id: number | null = null;
+    if (/^\d+$/.test(ref) || /roblox\.com/i.test(ref)) {
+      id = await ops.resolveUniverse(ref);
+      const known = await q("SELECT 1 FROM games WHERE universe_id = ?", [id]);
+      if (!known.length) id = await ops.addGame(ref, "you");
+    } else {
+      const hit = await q<{ universe_id: number }>("SELECT universe_id FROM games WHERE name LIKE ? ORDER BY playing DESC LIMIT 1", [`%${ref}%`]);
+      if (!hit[0]) throw new Error(`No tracked game matches "${ref}". Paste its Roblox link to add it.`);
+      id = Number(hit[0].universe_id);
+    }
+    if (!ids.includes(String(id))) ids.push(String(id));
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  redirect(`/compare?ids=${ids.join(",")}${error ? `&error=${encodeURIComponent(error)}` : ""}`);
+}

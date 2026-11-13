@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { nowMs } from "./clock";
 import { kvGet, kvSet, now, q, run } from "./db";
 
 // Claude access for the dashboard: where the key comes from, which model to
@@ -46,7 +47,7 @@ export async function getClient(): Promise<Anthropic> {
 }
 
 const monthStart = () => {
-  const d = new Date();
+  const d = new Date(nowMs());
   return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
 };
 

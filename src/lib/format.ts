@@ -1,3 +1,5 @@
+import { nowMs } from "./clock";
+
 export function num(n: number | null | undefined): string {
   if (n == null) return "–";
   const a = Math.abs(n);
@@ -9,7 +11,7 @@ export function num(n: number | null | undefined): string {
 
 export function age(ts: number | null | undefined): string {
   if (!ts) return "–";
-  const d = (Date.now() / 1000 - ts) / 86400;
+  const d = (nowMs() / 1000 - ts) / 86400;
   if (d < 1) return `${Math.max(1, Math.round(d * 24))}h`;
   if (d < 60) return `${Math.round(d)}d`;
   if (d < 730) return `${Math.round(d / 30.4)}mo`;
@@ -18,7 +20,7 @@ export function age(ts: number | null | undefined): string {
 
 export function ago(ts: number | null | undefined): string {
   if (!ts) return "never";
-  const s = Date.now() / 1000 - ts;
+  const s = nowMs() / 1000 - ts;
   if (s < 90) return "just now";
   if (s < 5400) return `${Math.round(s / 60)} min ago`;
   if (s < 129600) return `${Math.round(s / 3600)}h ago`;

@@ -8,6 +8,12 @@ const loop = args.includes("--loop");
 const minutes = Number(args.find((a) => /^\d+(\.\d+)?$/.test(a)) ?? "10");
 
 (async () => {
+  // On a CI machine a missing database address would silently collect into a
+  // file that is thrown away when the run ends. Refuse instead.
+  if (process.env.CI && !process.env.TURSO_DATABASE_URL?.startsWith("libsql://")) {
+    console.error("TURSO_DATABASE_URL is not set. Add it (and TURSO_AUTH_TOKEN) under the repository's Settings > Secrets and variables > Actions.");
+    process.exit(1);
+  }
   do {
     try {
       await cycle(minutes);
