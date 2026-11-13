@@ -154,3 +154,13 @@ export async function getGamePasses(universeId: number): Promise<GamePass[]> {
 
 export const playUrl = (placeId: number) => `roblox://experiences/start?placeId=${placeId}`;
 export const webUrl = (placeId: number) => `https://www.roblox.com/games/${placeId}`;
+
+/** A game's name straight from Roblox's creator API; works when the public game endpoint is rate-limited. */
+export async function universeName(universeId: number): Promise<string | null> {
+  try {
+    const d = await rbx<{ name?: string }>(`https://develop.roblox.com/v1/universes/${universeId}`, 2);
+    return d.name?.trim() || null;
+  } catch {
+    return null;
+  }
+}

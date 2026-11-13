@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { validSession } from "@/proxy";
-import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes, Sparkles } from "lucide-react";
+import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes, Sparkles, Wrench } from "lucide-react";
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { ago, num } from "@/lib/format";
@@ -31,6 +31,7 @@ export async function Sidebar() {
     { href: "/ideas", match: "/ideas", label: "Ideas", icon: Lightbulb },
     { href: "/gaps", match: "/gaps", label: "Gap finder", icon: Sparkles },
     { href: "/my-games", match: "/my-games", label: "My games", icon: ChartLine },
+    { href: "/tools", match: "/tools", label: "Tools", icon: Wrench },
   ];
   const system: Item[] = [
     { href: "/activity", match: "/activity", label: "Activity", icon: History },

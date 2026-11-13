@@ -23,6 +23,7 @@ const PAGES: { label: string; href: string; icon: typeof Home; words: string }[]
   { label: "Ideas", href: "/ideas", icon: Lightbulb, words: "ideas chat conversations" },
   { label: "New idea", href: "/ideas?new=1", icon: Plus, words: "new idea chat ask grade" },
   { label: "My games", href: "/my-games", icon: ChartLine, words: "my games analytics" },
+  { label: "Thumbnail tester", href: "/tools/thumbnail", icon: Sparkles, words: "tools thumbnail icon tester readability" },
   { label: "Activity", href: "/activity", icon: History, words: "activity edits undo" },
   { label: "Settings", href: "/settings", icon: Settings, words: "settings key budget model" },
 ];

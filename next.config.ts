@@ -8,7 +8,8 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://*.rbxcdn.com",
+  // blob: is for images you drop into the thumbnail tester; they never leave the browser.
+  "img-src 'self' data: blob: https://*.rbxcdn.com",
   "font-src 'self' data:",
   `connect-src 'self'${dev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",

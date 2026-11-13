@@ -9,6 +9,7 @@ import { deleteChat } from "@/lib/chat";
 import { findGaps, generateBriefing } from "@/lib/insights";
 import { kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
+import { universeName } from "@/lib/roblox";
 import { encryptSecret, rateLimit } from "@/lib/security";
 import { tagGames, untaggedRising } from "@/lib/tagging";
 
@@ -183,6 +184,7 @@ export async function connectMyGame(formData: FormData) {
     } catch {
       // A private or unreleased game has no public page; analytics still work.
     }
+    if (/^Game \d+$/.test(name)) name = (await universeName(universeId)) ?? name;
     await run(
       "INSERT INTO my_games (universe_id, key_id, name, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(universe_id) DO UPDATE SET key_id = excluded.key_id, name = excluded.name",
       [universeId, keyId, name, now()],
@@ -198,7 +200,6 @@ export async function removeMyGame(formData: FormData) {
   const id = Number(formData.get("id"));
   await run("DELETE FROM my_games WHERE universe_id = ?", [id]);
   await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
-  await run("DELETE FROM rbx_keys WHERE id NOT IN (SELECT key_id FROM my_games)");
   revalidatePath("/my-games");
   redirect("/my-games");
 }
@@ -225,6 +226,28 @@ export async function dismissFinding(formData: FormData) {
   const game = Number(formData.get("game"));
   await run("UPDATE findings SET dismissed = 1 WHERE id = ?", [id]);
   revalidatePath(`/my-games/${game}`);
+}
+
+// ---- Roblox API keys (managed in Settings) ----
+
+export async function addRobloxKey(formData: FormData) {
+  const label = String(formData.get("label") ?? "").trim().slice(0, 60) || "My key";
+  const apiKey = String(formData.get("apiKey") ?? "").trim();
+  if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label, encryptSecret(apiKey), now()]);
+  revalidatePath("/settings");
+  revalidatePath("/my-games");
+}
+
+/** Deleting a key also disconnects the games that were using it. */
+export async function deleteRobloxKey(formData: FormData) {
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return;
+  const games = await q<{ universe_id: number }>("SELECT universe_id FROM my_games WHERE key_id = ?", [id]);
+  for (const g of games) await run("DELETE FROM metric_cache WHERE universe_id = ?", [Number(g.universe_id)]);
+  await run("DELETE FROM my_games WHERE key_id = ?", [id]);
+  await run("DELETE FROM rbx_keys WHERE id = ?", [id]);
+  revalidatePath("/settings");
+  revalidatePath("/my-games");
 }
 
 // ---- Ideas ----

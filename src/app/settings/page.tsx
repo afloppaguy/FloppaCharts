@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { logoutAction, removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
+import { addRobloxKey, deleteRobloxKey, logoutAction, removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
+import { ago } from "@/lib/format";
 import { PageHeader, Section } from "@/components/page-parts";
 import { AutoTagToggle, ModelPicker } from "@/components/ai-buttons";
 import { getAutoTag } from "@/lib/insights";
@@ -12,13 +13,16 @@ const field = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm outline-none placeholde
 const mask = (k: string) => `${k.slice(0, 10)}…${k.slice(-4)}`;
 
 export default async function SettingsPage() {
-  const [key, budget, byPurpose, autoTag] = await Promise.all([
+  const [key, budget, byPurpose, autoTag, robloxKeys] = await Promise.all([
     getApiKey(),
     getBudget(),
     q<{ purpose: string; calls: number; cost: number }>(
       "SELECT purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost FROM ai_usage WHERE ts >= CAST(strftime('%s', 'now', 'start of month') AS INTEGER) GROUP BY purpose ORDER BY cost DESC",
     ),
     getAutoTag(),
+    q<{ id: number; label: string; created_at: number; games: number; names: string | null }>(
+      "SELECT k.id, k.label, k.created_at, COUNT(g.universe_id) AS games, GROUP_CONCAT(g.name, ', ') AS names FROM rbx_keys k LEFT JOIN my_games g ON g.key_id = k.id GROUP BY k.id ORDER BY k.id",
+    ),
   ]);
   const usedPct = Math.min(100, (budget.spent / Math.max(budget.monthlyBudget, 0.01)) * 100);
   const mcpToken = !!process.env.MCP_TOKEN;
@@ -110,6 +114,45 @@ export default async function SettingsPage() {
         </form>
         <p className="text-xs text-muted-foreground">
           The dashboard only counts what it spends itself. If you use the same credits elsewhere, enter what is really left and it will correct its count.
+        </p>
+      </Section>
+
+      <Section title="Roblox API keys" hint="For My games. One key per account or group; a key can cover several games">
+        {robloxKeys.length > 0 && (
+          <ul className="grid gap-1">
+            {robloxKeys.map((k) => (
+              <li key={k.id} className="flex items-center gap-3 rounded-xl bg-muted/30 px-3.5 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{k.label}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {Number(k.games) ? `Used by ${k.names}` : "Not connected to a game yet"} · added {ago(k.created_at)}
+                  </div>
+                </div>
+                <form action={deleteRobloxKey}>
+                  <input type="hidden" name="id" value={k.id} />
+                  <Button type="submit" variant="ghost" size="sm" title={Number(k.games) ? "Deletes the key and disconnects the games using it" : "Deletes the key"}>
+                    Delete
+                  </Button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form action={addRobloxKey} className="flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            Name
+            <input name="label" placeholder="Main account, My group…" maxLength={60} className={`${field} w-48`} />
+          </label>
+          <label className="grid flex-1 gap-1 text-xs text-muted-foreground">
+            Open Cloud API key
+            <input name="apiKey" type="password" autoComplete="off" required placeholder="Paste the key" className={`${field} w-full min-w-48`} />
+          </label>
+          <Button type="submit" size="sm">
+            Add key
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground">
+          Create keys on create.roblox.com under Open Cloud, API Keys. Give each one only the <span className="text-foreground">universe.analytics:read</span> permission for the games it should cover. Keys are stored encrypted.
         </p>
       </Section>
 

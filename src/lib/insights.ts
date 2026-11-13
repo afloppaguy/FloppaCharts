@@ -31,6 +31,20 @@ function line(g: Game) {
   };
 }
 
+/**
+ * Is this game's move worth mentioning? Every game swings with the time of
+ * day, and the biggest ones swing by tens of thousands of players, so a
+ * change only counts when it is measured against the same time yesterday, or
+ * is far larger than a daily cycle in a game that is not already huge.
+ */
+function notable(g: Game, minPct24h = 15): boolean {
+  const b = baseline(g);
+  if (!b || b.value < 10) return false;
+  const pct = ((g.playing - b.value) / b.value) * 100;
+  if (b.label === "24h") return Math.abs(pct) >= minPct24h;
+  return g.playing < 100_000 && Math.abs(pct) >= 40;
+}
+
 // ---- Daily briefing ----
 
 const BRIEFING = `You write the daily briefing for one Roblox developer who uses a private dashboard that tracks thousands of games. They read it in under a minute to decide what to look at today.
@@ -43,23 +57,26 @@ Write the briefing in markdown, about 150 to 220 words:
 - After a section that names games, add a line on its own in exactly this form: ::games 123, 456, 789 using those games' ids (up to 6). The dashboard turns it into a row of game cards.
 - End with one line starting "Worth a look:" naming one game or niche to open first, and why.
 
+What to leave out: anything the developer would already expect. Every game gains and loses players with the time of day, and the largest games move by tens of thousands of players within hours; that is the daily cycle, not news, so never report it. The same goes for the biggest games simply being big. A section with nothing unusual in it is omitted, and a short briefing is better than a padded one. If almost nothing stands out today, say so in one line.
+
 Rules: use only the numbers given. Growth windows may be short ("1h", "since tracked"); say which window a figure covers and do not call a one-hour change a trend. Pace is a game's visit rate against its lifetime average. Plain words, no headings larger than bold labels, no advice on how to build games, no filler.`;
 
 export async function generateBriefing(): Promise<string> {
   const [rising, fresh, pace, falling, niches, watch] = await Promise.all([
-    listGames({ min: 100, sort: "rise", pageSize: 10 }),
-    listGames({ min: 50, maxAge: 30, sort: "rise", pageSize: 8 }),
+    listGames({ min: 100, sort: "rise", pageSize: 40 }),
+    listGames({ min: 50, maxAge: 30, sort: "rise", pageSize: 30 }),
     listGames({ min: 200, maxAge: 180, sort: "pace", pageSize: 8 }),
-    listGames({ min: 300, sort: "fall", pageSize: 6 }),
+    listGames({ min: 300, sort: "fall", pageSize: 40 }),
     getRisingNiches(8),
     listGames({ watch: true, min: 0, sort: "rise", pageSize: 12 }),
   ]);
   const data = {
     date: today(),
-    fastest_risers: rising.games.map(line),
-    new_and_gaining: fresh.games.map(line),
-    above_usual_pace: pace.games.map(line),
-    losing_players: falling.games.map(line),
+    // Only moves that are not just the daily cycle (see notable()).
+    fastest_risers: rising.games.filter((g) => notable(g)).slice(0, 10).map(line),
+    new_and_gaining: fresh.games.filter((g) => notable(g)).slice(0, 8).map(line),
+    above_usual_pace: pace.games.filter((g) => g.playing < 150_000).map(line),
+    losing_players: falling.games.filter((g) => notable(g, 20) && g.playing < (baseline(g)?.value ?? 0)).slice(0, 6).map(line),
     hot_niches: niches.map((n) => ({ niche: n.term, kind: n.kind, games: n.games, hot_games: n.hot, new_games: n.fresh, players: n.players, examples: n.top.map((t) => ({ id: t.universe_id, name: t.name })) })),
     watchlist: watch.games.map(line),
   };
