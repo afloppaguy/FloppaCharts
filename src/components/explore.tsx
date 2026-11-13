@@ -5,6 +5,8 @@ import { FilterBar } from "@/components/filter-bar";
 import { currentView, Games } from "@/components/game-table";
 import { PageHeader, Presets } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
+import { pollGames } from "@/lib/collector";
+import { now, q } from "@/lib/db";
 import { getGenres, listGames, parseFilters, SORT_LABELS } from "@/lib/queries";
 
 const PAGE_SIZE = 60;
@@ -17,6 +19,11 @@ export async function Explore({ sp, watch }: { sp: Record<string, string | strin
   f.watch = watch;
   f.pageSize = PAGE_SIZE;
   if (f.min == null) f.min = defaultMin;
+  if (watch) {
+    // The watchlist is kept live: refresh any watched game whose numbers are over two minutes old (giving up after 6s).
+    const stale = await q<{ universe_id: number }>("SELECT g.universe_id FROM games g JOIN watchlist w ON w.universe_id = g.universe_id WHERE COALESCE(g.last_polled, 0) < ? LIMIT 50", [now() - 120]);
+    if (stale.length) await Promise.race([pollGames(stale.map((s) => Number(s.universe_id))).catch(() => 0), new Promise((r) => setTimeout(r, 6000))]);
+  }
   const [{ games, total }, genres, view] = await Promise.all([listGames(f), getGenres(), currentView()]);
   const page = Math.max(f.page ?? 1, 1);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -32,7 +39,7 @@ export async function Explore({ sp, watch }: { sp: Record<string, string | strin
   const pageBtn = "rounded-lg bg-muted/60 px-3 py-1.5 text-sm hover:bg-muted";
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-5">
+    <div className="mx-auto grid max-w-[100rem] gap-5">
       <PageHeader title={watch ? "Watchlist" : "Explore"} subtitle={`${total.toLocaleString("en-US")} ${total === 1 ? "game" : "games"}`}>
         <div className="flex items-center gap-2">
           {!watch && (

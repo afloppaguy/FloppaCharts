@@ -1,5 +1,11 @@
 import Link from "next/link";
+import { after } from "next/server";
+import { Sparkles } from "lucide-react";
+import { BriefingButton } from "@/components/ai-buttons";
 import { currentView, Games } from "@/components/game-table";
+import { RichText } from "@/components/rich-text";
+import { getApiKey } from "@/lib/ai";
+import { dailyUpkeep, getBriefing } from "@/lib/insights";
 import { PageHeader, Presets, Section } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
 import { now } from "@/lib/db";
@@ -18,16 +24,37 @@ export default async function HomePage() {
     listGames({ min: 50, sort: "rise", pageSize: count }),
     getRisingNiches(9),
   ]);
-  const historyHours = status.oldestSnapshot ? (now() - status.oldestSnapshot) / 3600 : 0;
+  const [briefing, hasAi] = await Promise.all([getBriefing().catch(() => null), getApiKey().then((k) => !!k)]);
+  // After the page is sent: write today's briefing and tag new risers if they are due.
+  after(() => dailyUpkeep());
+  const historyHours =status.oldestSnapshot ? (now() - status.oldestSnapshot) / 3600 : 0;
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-10">
+    <div className="mx-auto grid max-w-[100rem] gap-10">
       <div className="grid gap-4">
         <PageHeader title="Home" subtitle={`${num(status.active)} active games out of ${num(status.games)} tracked`}>
           <ViewToggle view={view} />
         </PageHeader>
         <Presets />
       </div>
+
+      {briefing ? (
+        <section className="rounded-2xl bg-muted/30 px-5 py-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+              <Sparkles className="size-4 text-sky-400" />
+              {briefing.isToday ? "Today's briefing" : `Briefing from ${briefing.day}`}
+            </h2>
+            <BriefingButton label="Rewrite" />
+          </div>
+          <RichText text={briefing.body} />
+        </section>
+      ) : hasAi ? (
+        <section className="flex items-center justify-between gap-3 rounded-2xl bg-muted/30 px-5 py-4">
+          <p className="text-sm text-muted-foreground">Your daily briefing is being written. It appears here within a minute.</p>
+          <BriefingButton label="Write it now" />
+        </section>
+      ) : null}
 
       {status.games === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">

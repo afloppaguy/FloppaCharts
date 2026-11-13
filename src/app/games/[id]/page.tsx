@@ -6,7 +6,8 @@ import { TagGameButton } from "@/components/ai-buttons";
 import { BackfillButton, Notes, Tags, WatchButton } from "@/components/game-actions";
 import { getApiKey } from "@/lib/ai";
 import { pollGames } from "@/lib/collector";
-import { GameIcon, Growth, Pace, sessionText } from "@/components/game-table";
+import { currentView, GameIcon, Games, Growth, Pace, sessionText } from "@/components/game-table";
+import { similarGames } from "@/lib/related";
 import { HistoryChart, type Point } from "@/components/history-chart";
 import { Section } from "@/components/page-parts";
 import { now } from "@/lib/db";
@@ -55,12 +56,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   }
 
   const hasAi = !!(await getApiKey());
-  const [history, note, tags, icons, passes] = await Promise.all([
+  const [history, note, tags, icons, passes, similar, view] = await Promise.all([
     getHistory(id),
     getNote(id),
     getTags(id),
     iconsFor([id]),
     getGamePasses(id).catch(() => [] as GamePass[]),
+    similarGames(g, 14).catch(() => []),
+    currentView(),
   ]);
   const points: Point[] = history.map((s) => ({
     ts: Number(s.ts),
@@ -74,7 +77,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const chip = "rounded-full bg-muted/60 px-2.5 py-0.5 text-xs text-muted-foreground";
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-10">
+    <div className="mx-auto grid max-w-7xl gap-10">
       <header className="flex flex-wrap items-center gap-5">
         <GameIcon url={icons.get(id)} size={88} className="rounded-2xl" />
         <div className="min-w-0 flex-1">
@@ -82,7 +85,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             {g.name}
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {g.creator_name ?? "Unknown creator"} · {age(g.created_at)} old · updated {ago(g.updated_at)}
+            {g.creator_id ? (
+              <Link href={`/creators/${g.creator_type === "Group" ? "group" : "user"}/${g.creator_id}`} className="text-foreground/90 underline-offset-4 hover:underline" title="See all of this creator's games">
+                {g.creator_name ?? "Unknown creator"}
+              </Link>
+            ) : (
+              (g.creator_name ?? "Unknown creator")
+            )}{" "}
+            · {age(g.created_at)} old · updated {ago(g.updated_at)}
           </p>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
             {g.genre_l1 && (
@@ -170,6 +180,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </Section>
         </div>
       </div>
+
+      {similar.length > 0 && (
+        <Section title="Similar games" hint="Same sub-genre, shared title words or shared tags">
+          <Games games={similar} view={view} compact />
+        </Section>
+      )}
 
       <p className="text-xs text-muted-foreground/70">
         Universe {g.universe_id} · found via {g.source} · checked {ago(g.last_polled)} · {history.length.toLocaleString("en-US")} history points

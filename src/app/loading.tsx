@@ -1,7 +1,7 @@
 // Shown the instant a link is clicked, while the next page's data loads.
 export default function Loading() {
   return (
-    <div className="mx-auto grid max-w-6xl gap-6" aria-busy="true" aria-label="Loading">
+    <div className="mx-auto grid max-w-[100rem] gap-6" aria-busy="true" aria-label="Loading">
       <div className="grid gap-2">
         <div className="h-6 w-40 animate-pulse rounded-md bg-muted/60" />
         <div className="h-4 w-64 animate-pulse rounded-md bg-muted/40" />

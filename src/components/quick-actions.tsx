@@ -28,7 +28,7 @@ export function WatchToggle({ id, watched, className }: { id: number; watched: b
       }
       className={cn(
         "inline-flex size-7 items-center justify-center rounded-md transition-opacity outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
-        on ? "text-sky-400 opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground",
+        on ? "text-sky-400 opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground [@media(hover:none)]:opacity-100",
         className,
       )}
     >
@@ -67,7 +67,7 @@ export function ViewToggle({ view }: { view: View }) {
   );
 }
 
-export function NavLink({ href, match, children }: { href: string; match: string; children: React.ReactNode }) {
+export function NavLink({ href, match, children, compact = false }: { href: string; match: string; children: React.ReactNode; compact?: boolean }) {
   const pathname = usePathname();
   const active = match === "/" ? pathname === "/" : pathname.startsWith(match);
   return (
@@ -75,7 +75,8 @@ export function NavLink({ href, match, children }: { href: string; match: string
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
+        "flex items-center rounded-lg text-sm transition-colors",
+        compact ? "shrink-0 gap-1.5 px-2.5 py-1.5 whitespace-nowrap" : "gap-2.5 px-2.5 py-1.5",
         active ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
       )}
     >

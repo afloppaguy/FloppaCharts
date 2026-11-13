@@ -78,8 +78,12 @@ function Empty() {
 /** Dense rows: best for comparing numbers. */
 async function GameList({ games, compact }: { games: Game[]; compact: boolean }) {
   const icons = await iconsFor(games.map((g) => Number(g.universe_id)));
-  const cols = compact ? "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem]" : "grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem_3.5rem_3.5rem_4.5rem_8rem_3.75rem]";
+  // Phones show name, players and growth; wider screens add columns as room allows.
+  const narrow = "grid-cols-[minmax(0,1fr)_3.75rem_3.75rem] sm:grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem]";
+  const cols = compact ? narrow : cn(narrow, "xl:grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_3.5rem_3.5rem_3.5rem_3.5rem_4.5rem_8rem_3.75rem]");
   const head = "text-right text-xs font-normal text-muted-foreground";
+  const sm = "hidden sm:block"; // likes, age
+  const wide = "hidden xl:contents"; // pace, session, visits, genre, actions
   return (
     <div role="table" className="text-sm">
       <div role="row" className={cn("grid items-center gap-x-3 px-2 pb-2", cols)}>
@@ -92,14 +96,14 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
         <span role="columnheader" className={head}>
           Growth
         </span>
-        <span role="columnheader" className={head}>
+        <span role="columnheader" className={cn(head, sm)}>
           Likes
         </span>
-        <span role="columnheader" className={head}>
+        <span role="columnheader" className={cn(head, sm)}>
           Age
         </span>
         {!compact && (
-          <>
+          <div className={wide}>
             <span role="columnheader" className={head} title="Visit rate right now against the game's lifetime average. x2 = twice its usual pace.">
               Pace
             </span>
@@ -113,7 +117,7 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
               Genre
             </span>
             <span />
-          </>
+          </div>
         )}
       </div>
       {games.map((g) => {
@@ -130,10 +134,10 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
             </Link>
             <span className="text-right tabular-nums">{num(g.playing)}</span>
             <Growth g={g} className="text-right" />
-            <span className={cn("text-right tabular-nums", likeColor(like))}>{like != null ? `${like}%` : "–"}</span>
-            <span className="text-right tabular-nums text-muted-foreground">{age(g.created_at)}</span>
+            <span className={cn("text-right tabular-nums", sm, likeColor(like))}>{like != null ? `${like}%` : "–"}</span>
+            <span className={cn("text-right tabular-nums text-muted-foreground", sm)}>{age(g.created_at)}</span>
             {!compact && (
-              <>
+              <div className={wide}>
                 <Pace value={g.pace} className="text-right" />
                 <span className="text-right tabular-nums text-muted-foreground">{sessionText(g.est_session_min)}</span>
                 <span className="text-right tabular-nums text-muted-foreground">{num(g.visits)}</span>
@@ -142,7 +146,7 @@ async function GameList({ games, compact }: { games: Game[]; compact: boolean })
                   <WatchToggle id={id} watched={!!g.watched} />
                   <PlayLink placeId={g.root_place_id} className="text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" />
                 </span>
-              </>
+              </div>
             )}
           </div>
         );

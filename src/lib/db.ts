@@ -157,6 +157,18 @@ const SCHEMA = [
     confidence TEXT,
     dismissed INTEGER NOT NULL DEFAULT 0
   )`,
+  `CREATE TABLE IF NOT EXISTS briefings (
+    day TEXT PRIMARY KEY,
+    body TEXT NOT NULL,
+    model TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS gap_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_ts INTEGER NOT NULL,
+    model TEXT,
+    data TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS icons (
     universe_id INTEGER PRIMARY KEY,
     url TEXT NOT NULL,
@@ -194,6 +206,8 @@ export function ready(): Promise<void> {
         ["chats", "cost_usd REAL NOT NULL DEFAULT 0"],
         ["chats", "model TEXT"],
         ["chats", "busy_until INTEGER NOT NULL DEFAULT 0"],
+        ["chats", "idea_name TEXT"],
+        ["chats", "pitch TEXT"],
       ];
       for (const [table, col] of added) {
         try {
@@ -242,7 +256,15 @@ export async function q<T = Record<string, unknown>>(sql: string, args: InValue[
 
 export async function run(sql: string, args: InValue[] = []) {
   await ready();
-  return db().execute({ sql, args });
+  try {
+    return await db().execute({ sql, args });
+  } catch (e) {
+    // Retry a write only when the connection was never opened, so it cannot have been applied.
+    const code = (e as { cause?: { code?: string } })?.cause?.code ?? "";
+    if (!/CONNECT_TIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(code)) throw e;
+    await new Promise((r) => setTimeout(r, 500));
+    return db().execute({ sql, args });
+  }
 }
 
 export async function kvGet(key: string): Promise<string | null> {

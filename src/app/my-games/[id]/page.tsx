@@ -77,7 +77,7 @@ export default async function MyGamePage({ params }: { params: Promise<{ id: str
   const healthy = findings.filter((f) => f.kind === "healthy");
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-10">
+    <div className="mx-auto grid max-w-[100rem] gap-10">
       <div className="grid gap-3">
         <Link href="/my-games" className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-3.5" /> My games

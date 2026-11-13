@@ -114,5 +114,8 @@ export function explainAiError(e: unknown): string {
   if (e instanceof Anthropic.BadRequestError) return `Claude rejected the request: ${e.message}`;
   if (e instanceof Anthropic.APIConnectionError) return "Could not reach Claude. Check the connection and try again.";
   if (e instanceof Anthropic.APIError) return `Claude returned an error (${e.status}): ${e.message}`;
+  if (e instanceof Error && /fetch failed|CONNECT_TIMEOUT|ECONNRESET/i.test(`${e.message} ${(e as { cause?: { code?: string } }).cause?.code ?? ""}`)) {
+    return "The connection to the database dropped for a moment. What was done so far is saved; send your message again.";
+  }
   return e instanceof Error ? e.message : String(e);
 }

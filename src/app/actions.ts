@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { explainAiError, getAiSettings, getBudget, setAiSettings, setChosenModel, type AiSettings } from "@/lib/ai";
 import { analyzeGame } from "@/lib/analytics";
 import { deleteChat } from "@/lib/chat";
+import { findGaps, generateBriefing } from "@/lib/insights";
 import { kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
 import { tagGames, untaggedRising } from "@/lib/tagging";
@@ -226,6 +227,33 @@ export async function deleteChatAction(formData: FormData) {
 
 export async function setModelAction(id: string) {
   await setChosenModel(id);
+  revalidatePath("/settings");
+}
+
+// ---- Briefing, gap finder, auto-tagging ----
+
+export async function refreshBriefing(): Promise<Result> {
+  try {
+    await generateBriefing();
+    revalidatePath("/");
+    return { ok: true, message: "Briefing updated" };
+  } catch (e) {
+    return { ok: false, message: explainAiError(e) };
+  }
+}
+
+export async function runGapFinder(): Promise<Result> {
+  try {
+    const r = await findGaps();
+    revalidatePath("/gaps");
+    return { ok: true, message: `Found ${r.gaps} gaps ($${r.cost.toFixed(3)})` };
+  } catch (e) {
+    return { ok: false, message: explainAiError(e) };
+  }
+}
+
+export async function setAutoTagAction(on: boolean) {
+  await kvSet("auto_tag", on ? "on" : "off");
   revalidatePath("/settings");
 }
 

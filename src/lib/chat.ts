@@ -51,6 +51,8 @@ Grading
 
 Writing
 - Lead with the verdict, then the evidence, then what would change your mind. Short paragraphs; a small table only when comparing several games on the same few numbers, with short cells.
+- Show the games, do not only name them. Right after a paragraph or list that cites tracked games as evidence, add a line on its own in exactly this form: ::games 123456, 234567, 345678 (the games' universe IDs, up to 8). The dashboard turns that line into a row of game cards with icons and live numbers that the developer can click. Use it for comparisons, competitors, and examples of a niche; one or two rows per reply is plenty. Never put anything else on that line.
+- When you grade an idea, give the game a real title in record_grade (the way it would appear on Roblox) and a one-sentence pitch, and refer to the idea by that title in your reply.
 - Write for a person, in plain words. Never show internal field or tool names such as pace_vs_lifetime, est_session_minutes, rise_score, universe_id or list_games: say "pace", "estimated session length", "growth". Give numbers the way a person would read them ("12.4K players", "pace 2.3x").
 - No filler, no pep talk, and no description of your own process ("I'll start by checking...").`;
 
@@ -62,9 +64,10 @@ const GRADE_TOOL: Anthropic.Beta.BetaTool = {
     properties: {
       grade: { type: "string", enum: [...GRADES] },
       reason: { type: "string", description: "One or two sentences: the main evidence behind the grade." },
-      title: { type: "string", description: "A short name for the idea (3-6 words)." },
+      name: { type: "string", description: "A name for the game itself, written the way a Roblox game title would be (2-5 words, e.g. 'Feed and Raid'). Use the developer's own name for it if they gave one." },
+      pitch: { type: "string", description: "The idea in one plain sentence: what the player does and why it is fun. At most 25 words." },
     },
-    required: ["grade", "reason"],
+    required: ["grade", "reason", "name", "pitch"],
   },
 };
 
@@ -78,7 +81,7 @@ function tools(model: string): Anthropic.Beta.BetaToolUnion[] {
 export type ChatEvent =
   | { type: "text"; delta: string }
   | { type: "tool"; name: string; summary: string }
-  | { type: "grade"; grade: string; reason: string }
+  | { type: "grade"; grade: string; reason: string; name: string | null; pitch: string | null }
   | { type: "usage"; cost: number; tokens: number }
   | { type: "done"; model: string; cost: number; chatCost: number; remaining: number; seconds: number }
   | { type: "error"; message: string };
@@ -90,7 +93,7 @@ export async function createChat(firstMessage: string): Promise<number> {
   return Number(r.lastInsertRowid);
 }
 
-type Block = { type: string; id?: string; tool_use_id?: string; text?: string; name?: string };
+type Block = { type: string; id?: string; tool_use_id?: string; text?: string; name?: string; input?: Record<string, unknown> };
 type Stored = { role: "user" | "assistant"; content: string | Block[] };
 
 /**
@@ -272,8 +275,10 @@ export async function runChatTurn(chatId: number, userText: string, emit: (e: Ch
               const grade = String(input.grade);
               if (!(GRADES as readonly string[]).includes(grade)) throw new Error(`grade must be one of ${GRADES.join(", ")}`);
               const reason = String(input.reason ?? "");
-              await run("UPDATE chats SET grade = ?, grade_reason = ?, title = COALESCE(?, title) WHERE id = ?", [grade, reason, input.title ? String(input.title).slice(0, 70) : null, chatId]);
-              emit({ type: "grade", grade, reason });
+              const name = input.name ? String(input.name).slice(0, 60) : null;
+              const pitch = input.pitch ? String(input.pitch).slice(0, 240) : null;
+              await run("UPDATE chats SET grade = ?, grade_reason = ?, title = COALESCE(?, title), idea_name = COALESCE(?, idea_name), pitch = COALESCE(?, pitch) WHERE id = ?", [grade, reason, name, name, pitch, chatId]);
+              emit({ type: "grade", grade, reason, name, pitch });
               return { type: "tool_result", tool_use_id: call.id, content: "Recorded." };
             }
             const tool = TOOLS.find((t) => t.name === call.name && CHAT_TOOLS.has(t.name));
@@ -302,7 +307,8 @@ export async function runChatTurn(chatId: number, userText: string, emit: (e: Ch
   }
 }
 
-export type ChatTurn = { role: "user" | "assistant"; text: string; tools: string[] };
+export type IdeaCard = { grade: string; name: string | null; pitch: string | null };
+export type ChatTurn = { role: "user" | "assistant"; text: string; tools: string[]; card?: IdeaCard };
 
 /** Stored messages flattened for display: text plus the names of tools used. */
 export async function getChatTurns(chatId: number): Promise<ChatTurn[]> {
@@ -317,18 +323,21 @@ export async function getChatTurns(chatId: number): Promise<ChatTurn[]> {
     if (r.role === "user") continue; // tool results
     const text = content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
     const used = content.filter((b) => b.type === "tool_use" && b.name !== "record_grade").map((b) => b.name ?? "");
+    const graded = content.find((b) => b.type === "tool_use" && b.name === "record_grade")?.input;
+    const card: IdeaCard | undefined = graded?.grade ? { grade: String(graded.grade), name: graded.name ? String(graded.name) : null, pitch: graded.pitch ? String(graded.pitch) : null } : undefined;
     const last = turns[turns.length - 1];
     if (last?.role === "assistant") {
       last.text += (last.text && text ? "\n\n" : "") + text;
       last.tools.push(...used);
-    } else turns.push({ role: "assistant", text, tools: used });
+      if (card) last.card = card;
+    } else turns.push({ role: "assistant", text, tools: used, card });
   }
   return turns;
 }
 
-export type ChatRow = { id: number; title: string; grade: string | null; grade_reason: string | null; summary: string | null; cost_usd: number; model: string | null; updated_at: number; messages: number };
+export type ChatRow = { id: number; title: string; grade: string | null; grade_reason: string | null; summary: string | null; idea_name: string | null; pitch: string | null; cost_usd: number; model: string | null; updated_at: number; messages: number };
 
-const CHAT_COLS = `c.id, c.title, c.grade, c.grade_reason, c.summary, c.cost_usd, c.model, c.updated_at,
+const CHAT_COLS = `c.id, c.title, c.grade, c.grade_reason, c.summary, c.idea_name, c.pitch, c.cost_usd, c.model, c.updated_at,
   (SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id = c.id AND m.role = 'user' AND m.content LIKE '"%') AS messages`;
 
 export async function listChats() {

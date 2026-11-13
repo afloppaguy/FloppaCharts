@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const term = raw.split(",").pop()!.trim().toLowerCase();
   if (term.length < 2) return Response.json({ games: [], keywords: [] });
 
-  const [games, niches] = await Promise.all([
+  const [games, niches, ideas] = await Promise.all([
     q<{ universe_id: number; name: string; playing: number; genre_l1: string | null; genre_l2: string | null }>(
       `SELECT universe_id, name, playing, genre_l1, genre_l2 FROM games
        WHERE last_polled IS NOT NULL AND name LIKE ?
@@ -21,6 +21,7 @@ export async function GET(req: Request) {
       [`%${term}%`, `${term}%`],
     ),
     getNiches("keyword"),
+    q<{ id: number; title: string; grade: string | null }>("SELECT id, COALESCE(idea_name, title) AS title, grade FROM chats WHERE title LIKE ? OR idea_name LIKE ? ORDER BY updated_at DESC LIMIT 3", [`%${term}%`, `%${term}%`]),
   ]);
   const icons = await iconsFor(games.map((g) => Number(g.universe_id)));
   const keywords = niches
@@ -32,5 +33,6 @@ export async function GET(req: Request) {
   return Response.json({
     games: games.map((g) => ({ id: Number(g.universe_id), name: g.name, playing: g.playing, genre: g.genre_l2 || g.genre_l1, icon: icons.get(Number(g.universe_id)) ?? null })),
     keywords,
+    ideas: ideas.map((c) => ({ id: Number(c.id), title: c.title, grade: c.grade })),
   });
 }

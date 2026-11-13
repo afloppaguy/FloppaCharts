@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { ArrowLeft, ArrowUp, Check, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { deleteChatAction, setModelAction } from "@/app/actions";
+import { RichText } from "@/components/rich-text";
 import { cn } from "@/lib/utils";
 
 type Step = { label: string; at: number; ms?: number };
-type Turn = { role: "user" | "assistant"; text: string; tools: string[]; steps?: Step[]; seconds?: number };
+type IdeaCard = { grade: string; name: string | null; pitch: string | null };
+type Turn = { role: "user" | "assistant"; text: string; tools: string[]; steps?: Step[]; seconds?: number; card?: IdeaCard };
 export type ModelOption = { id: string; label: string; blurb: string; input: number; output: number };
 
 const GRADE_STYLE: Record<string, string> = {
@@ -34,27 +34,16 @@ export function GradeBadge({ grade, size = "sm" }: { grade: string | null; size?
   );
 }
 
-function Reply({ text }: { text: string }) {
+/** The idea in one glance: its name, its grade, and the one-line pitch. */
+export function IdeaSummary({ card, reason, className }: { card: IdeaCard; reason?: string | null; className?: string }) {
   return (
-    <div className="prose-chat min-w-0 text-sm leading-relaxed">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Wide tables scroll inside their own box; the page itself never scrolls sideways.
-          table: ({ children }) => (
-            <div className="overflow-x-auto">
-              <table>{children}</table>
-            </div>
-          ),
-          a: ({ href, children }) => (
-            <a href={href} target={href?.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
-              {children}
-            </a>
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+    <div className={cn("flex items-start gap-3.5 rounded-2xl bg-muted/40 px-4 py-3.5", className)}>
+      <GradeBadge grade={card.grade} size="lg" />
+      <div className="min-w-0">
+        <div className="text-base font-semibold tracking-tight">{card.name ?? "Untitled idea"}</div>
+        {card.pitch && <div className="mt-0.5 text-sm text-muted-foreground">{card.pitch}</div>}
+        {reason && <div className="mt-1.5 text-xs leading-relaxed text-muted-foreground/80">{reason}</div>}
+      </div>
     </div>
   );
 }
@@ -68,35 +57,36 @@ const STARTERS = [
 /** Stamp a duration on any step that is still open. */
 const closeSteps = (steps: Step[] | undefined): Step[] => (steps ?? []).map((s) => (s.ms == null ? { ...s, ms: Date.now() - s.at } : s));
 const secs = (ms: number) => (ms < 950 ? "<1s" : `${Math.round(ms / 1000)}s`);
-
 const money = (n: number) => (n < 0.01 && n > 0 ? "<$0.01" : `$${n.toFixed(2)}`);
 
 export function ChatView({
   chatId,
   title,
   initialTurns,
-  initialGrade,
+  initialCard,
   initialReason,
   models,
   initialModel,
   budget,
   initialChatCost,
+  starter,
 }: {
   chatId: number | null;
   title: string | null;
   initialTurns: Turn[];
-  initialGrade: string | null;
+  initialCard: IdeaCard | null;
   initialReason: string | null;
   models: ModelOption[];
   initialModel: string;
   budget: { remaining: number; monthlyBudget: number };
   initialChatCost: number;
+  starter?: string;
 }) {
   const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>(initialTurns);
-  const [grade, setGrade] = useState(initialGrade);
+  const [card, setCard] = useState(initialCard);
   const [reason, setReason] = useState(initialReason);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(starter ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState(initialModel);
@@ -150,7 +140,22 @@ export function ChatView({
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           if (!line) continue;
-          const e = JSON.parse(line) as { type: string; id?: number; delta?: string; name?: string; summary?: string; grade?: string; reason?: string; message?: string; model?: string; cost?: number; chatCost?: number; remaining?: number; seconds?: number };
+          const e = JSON.parse(line) as {
+            type: string;
+            id?: number;
+            delta?: string;
+            name?: string | null;
+            pitch?: string | null;
+            summary?: string;
+            grade?: string;
+            reason?: string;
+            message?: string;
+            model?: string;
+            cost?: number;
+            chatCost?: number;
+            remaining?: number;
+            seconds?: number;
+          };
           if (e.type === "chat" && e.id) idRef.current = e.id;
           else if (e.type === "text") patchLast((t) => ({ ...t, steps: closeSteps(t.steps), text: t.text + (e.delta ?? "") }));
           else if (e.type === "tool")
@@ -160,9 +165,11 @@ export function ChatView({
               tools: [...t.tools, e.name ?? ""],
               steps: [...closeSteps(t.steps), { label: e.summary ?? "Working", at: Date.now() }],
             }));
-          else if (e.type === "grade") {
-            setGrade(e.grade ?? null);
+          else if (e.type === "grade" && e.grade) {
+            const next = { grade: e.grade, name: e.name ?? null, pitch: e.pitch ?? null };
+            setCard(next);
             setReason(e.reason ?? null);
+            patchLast((t) => ({ ...t, card: next }));
           } else if (e.type === "usage") setTurnCost(e.cost ?? 0);
           else if (e.type === "error") {
             setError(e.message ?? "Something went wrong");
@@ -188,15 +195,16 @@ export function ChatView({
 
   const used = Math.min(100, Math.max(0, (1 - remaining / Math.max(budget.monthlyBudget, 0.01)) * 100));
   const current = models.find((m) => m.id === model) ?? models[0];
+  const heading = card?.name ?? title ?? "New idea";
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-3.5rem)] max-w-3xl min-w-0 flex-col">
-      {/* Top bar: where you are, which model, what it costs */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Link href="/ideas" className="inline-flex items-center gap-1.5 rounded-lg py-1 pr-2 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-3.5" /> All ideas
+    <div className="chat-height mx-auto flex max-w-4xl min-w-0 flex-col">
+      {/* Top bar: which idea, which model */}
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Link href="/ideas" aria-label="All ideas" title="All ideas" className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+          <ArrowLeft className="size-4" />
         </Link>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{title ?? "New idea"}</span>
+        <h1 className="min-w-[60%] flex-1 truncate text-lg font-semibold tracking-tight sm:min-w-0">{heading}</h1>
         <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Model">
           {models.map((m) => (
             <button
@@ -223,20 +231,20 @@ export function ChatView({
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 pl-10 text-xs text-muted-foreground">
         <span className="flex items-center gap-2" title={`${money(budget.monthlyBudget - remaining)} of $${budget.monthlyBudget.toFixed(0)} used this month`}>
-          <span className="font-medium text-foreground tabular-nums">${remaining.toFixed(2)}</span> left this month
-          <span className="h-1 w-20 overflow-hidden rounded-full bg-muted">
+          <span className="font-medium text-foreground tabular-nums">${remaining.toFixed(2)}</span> left
+          <span className="h-1 w-16 overflow-hidden rounded-full bg-muted">
             <span className={cn("block h-full rounded-full", used > 75 ? "bg-amber-500" : "bg-sky-500")} style={{ width: `${used}%` }} />
           </span>
         </span>
         <span>
           This chat <span className="text-foreground tabular-nums">{money(chatCost + (busy ? turnCost : 0))}</span>
         </span>
-        <span title={`$${current.input} in / $${current.output} out per million tokens`}>
+        <span className="hidden sm:inline" title={`$${current.input} in / $${current.output} out per million tokens`}>
           {current.label}: {current.blurb.toLowerCase()}
         </span>
-        {lastTurn && !busy && <span className="ml-auto">Last reply: {lastTurn}</span>}
+        {lastTurn && !busy && <span className="ml-auto hidden sm:inline">Last reply: {lastTurn}</span>}
         {busy && (
           <span className="ml-auto flex items-center gap-1.5 text-foreground tabular-nums">
             <Loader2 className="size-3 animate-spin" /> {seconds}s · {money(turnCost)}
@@ -244,14 +252,7 @@ export function ChatView({
         )}
       </div>
 
-      {grade && (
-        <div className="mb-3 flex items-center gap-3 rounded-xl bg-muted/40 px-3.5 py-2.5">
-          <GradeBadge grade={grade} size="lg" />
-          <div className="min-w-0 text-sm">{reason}</div>
-        </div>
-      )}
-
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pr-2">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 sm:pr-2">
         {turns.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
             <div>
@@ -270,6 +271,7 @@ export function ChatView({
           </div>
         ) : (
           <div className="grid min-w-0 gap-6 pb-4">
+            {card && <IdeaSummary card={card} reason={reason} />}
             {turns.map((t, i) => {
               const live = busy && i === turns.length - 1;
               return t.role === "user" ? (
@@ -277,7 +279,7 @@ export function ChatView({
                   {t.text}
                 </div>
               ) : (
-                <div key={i} className="grid min-w-0 gap-2.5">
+                <div key={i} className="grid min-w-0 gap-3">
                   {t.steps && t.steps.length > 0 ? (
                     live ? (
                       <ul className="grid gap-1 text-xs text-muted-foreground">
@@ -313,12 +315,14 @@ export function ChatView({
                     </div>
                   ) : null}
                   {t.text ? (
-                    <Reply text={t.text} />
+                    <RichText text={t.text} />
                   ) : live && !(t.steps && t.steps.length) ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="size-3.5 animate-spin" /> Thinking
                     </div>
                   ) : null}
+                  {/* The idea this reply graded, restated at the bottom so it is never lost in the text. */}
+                  {t.card && !live && t.text && <IdeaSummary card={t.card} className="mt-1 bg-muted/25" />}
                 </div>
               );
             })}

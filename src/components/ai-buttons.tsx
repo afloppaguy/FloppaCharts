@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { runAnalysis, setModelAction, tagGameAction, tagRisingAction } from "@/app/actions";
+import { refreshBriefing, runAnalysis, runGapFinder, setAutoTagAction, setModelAction, tagGameAction, tagRisingAction } from "@/app/actions";
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -56,6 +56,34 @@ export function ModelPicker({ models, current }: { models: { id: string; label: 
         </button>
       ))}
     </div>
+  );
+}
+
+export function BriefingButton({ label }: { label: string }) {
+  return <AiButton label={label} busy="Writing…" variant="ghost" action={refreshBriefing} title="Writes a fresh briefing from the latest data. Uses Haiku; costs about a cent." />;
+}
+
+export function GapFinderButton({ hasRun }: { hasRun: boolean }) {
+  return <AiButton label={hasRun ? "Search again" : "Find gaps"} busy="Scanning niches…" variant="default" action={runGapFinder} title="Claude scans every niche for demand with thin or weak supply and proposes a concept for each gap" />;
+}
+
+export function AutoTagToggle({ on }: { on: boolean }) {
+  const [value, setValue] = useState(on);
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      disabled={pending}
+      onClick={() => {
+        setValue(!value);
+        start(() => setAutoTagAction(!value));
+      }}
+      className={`relative h-6 w-10 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${value ? "bg-sky-500" : "bg-muted"}`}
+    >
+      <span className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${value ? "left-[1.125rem]" : "left-0.5"}`} />
+    </button>
   );
 }
 

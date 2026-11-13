@@ -149,3 +149,13 @@
 /* Thin, dark scrollbars everywhere instead of the bright system ones */
 html { color-scheme: dark; }
 * { scrollbar-width: thin; scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent; }
+
+/* The chat fills the window below the page padding (and the top bar on phones). */
+.chat-height { height: calc(100dvh - 3.5rem); }
+@media (max-width: 767px) { .chat-height { height: calc(100dvh - 5.5rem); } }
+
+/* Scale the whole interface up on large monitors (sizes are in rem, so everything follows). */
+@media (min-width: 1700px) { html { font-size: 17px; } }
+@media (min-width: 2300px) { html { font-size: 19px; } }
+.prose-chat .not-prose a { text-decoration: none; }
+.prose-chat .not-prose { margin-top: 0.6rem; margin-bottom: 0.9rem; }

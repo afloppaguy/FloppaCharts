@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes } from "lucide-react";
+import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { ago, num } from "@/lib/format";
@@ -23,6 +23,7 @@ export async function Sidebar() {
   ];
   const work: Item[] = [
     { href: "/ideas", match: "/ideas", label: "Ideas", icon: Lightbulb },
+    { href: "/gaps", match: "/gaps", label: "Gap finder", icon: Sparkles },
     { href: "/my-games", match: "/my-games", label: "My games", icon: ChartLine },
   ];
   const system: Item[] = [
@@ -31,7 +32,23 @@ export async function Sidebar() {
   ];
   const stale = status?.lastCycle ? now() - status.lastCycle.ts > 3600 : true;
   return (
-    <aside className="sticky top-0 flex h-screen w-48 shrink-0 flex-col px-3 py-6">
+    <>
+      {/* Phones: a top bar with the same destinations in a row that scrolls sideways. */}
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur md:hidden">
+        <nav className="flex items-center gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none]" aria-label="Main">
+          <Link href="/" aria-label="Floppa Charts home" className="mr-1 flex shrink-0 items-center">
+            <Cat className="size-5 text-sky-400" />
+          </Link>
+          {[...links, ...work, ...system].map((l) => (
+            <NavLink key={l.label} href={l.href} match={l.match} compact>
+              <l.icon className="size-4" />
+              <span>{l.label}</span>
+              {l.badge ? <span className="rounded-full bg-sky-500 px-1.5 text-[10px] font-medium text-white">{l.badge}</span> : null}
+            </NavLink>
+          ))}
+        </nav>
+      </header>
+    <aside className="sticky top-0 hidden h-screen w-48 shrink-0 flex-col px-3 py-6 md:flex 2xl:w-56">
       <Link href="/" className="mb-7 flex items-center gap-2 px-2.5 text-sm font-semibold tracking-tight">
         <Cat className="size-4 text-sky-400" />
         Floppa Charts
@@ -55,7 +72,9 @@ export async function Sidebar() {
           Updated {ago(status?.lastCycle?.ts)}
         </div>
         <div>{num(status?.games ?? 0)} games tracked</div>
+        <div className="mt-1 opacity-70">Ctrl K to search</div>
       </div>
     </aside>
+    </>
   );
 }

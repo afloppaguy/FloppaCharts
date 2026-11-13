@@ -16,7 +16,7 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
       chatId={id}
       title={chat.title}
       initialTurns={turns}
-      initialGrade={chat.grade}
+      initialCard={chat.grade ? { grade: chat.grade, name: chat.idea_name ?? chat.title, pitch: chat.pitch } : null}
       initialReason={chat.grade_reason}
       models={[...MODELS]}
       initialModel={budget.model}

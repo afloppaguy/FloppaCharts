@@ -23,7 +23,7 @@ function NicheList({ niches }: { niches: Niche[] }) {
   const cols = "grid-cols-[minmax(0,14rem)_4rem_6.5rem_4rem_5rem_5.5rem_minmax(0,1fr)]";
   const head = "text-right text-xs text-muted-foreground";
   return (
-    <div role="table" className="text-sm">
+    <div role="table" className="min-w-[46rem] text-sm">
       <div role="row" className={`grid items-center gap-x-4 px-2 pb-2 ${cols}`}>
         <span role="columnheader" className="text-xs text-muted-foreground">
           Niche
@@ -121,7 +121,7 @@ export default async function NichesPage({ searchParams }: { searchParams: Promi
   const pill = "rounded-full px-3 py-1 text-xs transition-colors";
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-5">
+    <div className="mx-auto grid max-w-[100rem] gap-5">
       <PageHeader title="Niches" subtitle="Groups of similar games, ranked by how many separate games in the group are hot right now, not by one game's numbers.">
         <div className="flex items-center gap-2">
           {!kw && active.kind === "tag" && <TagRisingButton />}
@@ -167,7 +167,9 @@ export default async function NichesPage({ searchParams }: { searchParams: Promi
       ) : view === "grid" ? (
         <NicheGrid niches={niches} />
       ) : (
-        <NicheList niches={niches} />
+        <div className="overflow-x-auto">
+          <NicheList niches={niches} />
+        </div>
       )}
     </div>
   );

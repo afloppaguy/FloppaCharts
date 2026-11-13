@@ -37,7 +37,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   ];
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-8">
+    <div className="mx-auto grid max-w-[100rem] gap-8">
       <PageHeader title="Compare" subtitle={`Up to ${MAX} games side by side`}>
         {games.length < MAX && (
           <form action={addToCompare} className="flex items-center">

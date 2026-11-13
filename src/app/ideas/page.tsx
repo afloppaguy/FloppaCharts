@@ -45,7 +45,7 @@ function Meta({ c }: { c: ChatRow }) {
   );
 }
 
-export default async function IdeasPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
+export default async function IdeasPage({ searchParams }: { searchParams: Promise<{ new?: string; prompt?: string }> }) {
   const [chats, key, sp, view, budget] = await Promise.all([listChats(), getApiKey(), searchParams, currentView(), getBudget()]);
 
   if (!key) {
@@ -64,7 +64,7 @@ export default async function IdeasPage({ searchParams }: { searchParams: Promis
   }
 
   if (sp.new || chats.length === 0) {
-    return <ChatView chatId={null} title={null} initialTurns={[]} initialGrade={null} initialReason={null} models={[...MODELS]} initialModel={budget.model} budget={budget} initialChatCost={0} />;
+    return <ChatView chatId={null} title={null} initialTurns={[]} initialCard={null} initialReason={null} models={[...MODELS]} initialModel={budget.model} budget={budget} initialChatCost={0} starter={sp.prompt} />;
   }
 
   const graded = chats.filter((c) => c.grade).length;
@@ -90,8 +90,9 @@ export default async function IdeasPage({ searchParams }: { searchParams: Promis
                 <DeleteButton id={c.id} className="relative z-10 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100" />
               </div>
               <Link href={`/ideas/${c.id}`} className="mt-3 line-clamp-2 text-sm font-medium outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring">
-                {c.title}
+                {c.idea_name ?? c.title}
               </Link>
+              {c.pitch && <p className="mt-1 line-clamp-2 text-xs text-foreground/80">{c.pitch}</p>}
               <p className="mt-1 line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground">{c.summary ?? c.grade_reason ?? "No summary yet."}</p>
               <div className="mt-3">
                 <Meta c={c} />
@@ -106,9 +107,9 @@ export default async function IdeasPage({ searchParams }: { searchParams: Promis
               <span className="flex w-10 shrink-0 justify-center">{c.grade ? <GradeBadge grade={c.grade} /> : <span className="text-xs text-muted-foreground/50">–</span>}</span>
               <span className="min-w-0 flex-1">
                 <Link href={`/ideas/${c.id}`} className="block truncate text-sm font-medium outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-ring">
-                  {c.title}
+                  {c.idea_name ?? c.title}
                 </Link>
-                <span className="block truncate text-xs text-muted-foreground">{c.summary ?? c.grade_reason ?? "No summary yet."}</span>
+                <span className="block truncate text-xs text-muted-foreground">{c.pitch ?? c.summary ?? c.grade_reason ?? "No summary yet."}</span>
               </span>
               <span className="hidden shrink-0 md:block">
                 <Meta c={c} />

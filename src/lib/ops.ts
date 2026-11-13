@@ -171,7 +171,8 @@ export async function backfillFromRolimons(id: number, actor: Actor) {
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36" },
     signal: AbortSignal.timeout(45000),
   });
-  if (!res.ok) throw new Error(`Rolimons returned ${res.status}; it may not track this game`);
+  if (res.status === 404) throw new Error("No older history exists for this game. Rolimons only tracks larger, established games, so new and small ones start from when this dashboard first saw them.");
+  if (!res.ok) throw new Error(`Could not fetch older history right now (Rolimons answered ${res.status}). Try again later.`);
   const html = await res.text();
   const m = html.match(/<script[^>]*id="game_history_json"[^>]*>([\s\S]*?)<\/script>/);
   if (!m) throw new Error("Rolimons has no history for this game (or its page layout changed)");

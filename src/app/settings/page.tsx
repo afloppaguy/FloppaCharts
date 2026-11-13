@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
 import { PageHeader, Section } from "@/components/page-parts";
-import { ModelPicker } from "@/components/ai-buttons";
+import { AutoTagToggle, ModelPicker } from "@/components/ai-buttons";
+import { getAutoTag } from "@/lib/insights";
 import { getApiKey, getBudget, modelLabel, MODELS } from "@/lib/ai";
 import { q } from "@/lib/db";
 
@@ -11,12 +12,13 @@ const field = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm outline-none placeholde
 const mask = (k: string) => `${k.slice(0, 10)}…${k.slice(-4)}`;
 
 export default async function SettingsPage() {
-  const [key, budget, byPurpose] = await Promise.all([
+  const [key, budget, byPurpose, autoTag] = await Promise.all([
     getApiKey(),
     getBudget(),
     q<{ purpose: string; calls: number; cost: number }>(
       "SELECT purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost FROM ai_usage WHERE ts >= CAST(strftime('%s', 'now', 'start of month') AS INTEGER) GROUP BY purpose ORDER BY cost DESC",
     ),
+    getAutoTag(),
   ]);
   const usedPct = Math.min(100, (budget.spent / Math.max(budget.monthlyBudget, 0.01)) * 100);
   const mcpToken = !!process.env.MCP_TOKEN;
@@ -55,6 +57,17 @@ export default async function SettingsPage() {
       <Section title="Model" hint="Used by the idea chat and choke-point checks. Nothing switches it for you.">
         <ModelPicker models={[...MODELS]} current={budget.model} />
         <p className="text-xs text-muted-foreground">You can also switch at the top of any chat. AI tagging and conversation summaries always use Haiku.</p>
+      </Section>
+
+      <Section title="Automatic AI work" hint="Runs quietly when you open the dashboard; always on Haiku">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm">
+            Tag rising games automatically
+            <div className="text-xs text-muted-foreground">Every six hours, up to 40 newly rising games get theme and mechanic tags, so the Themes niches stay filled. Well under a cent each time.</div>
+          </div>
+          <AutoTagToggle on={autoTag} />
+        </div>
+        <p className="text-xs text-muted-foreground">The daily briefing on the Home page is also written automatically, once a day, for about a cent.</p>
       </Section>
 
       <Section title="AI budget" hint="Resets on the 1st of each month (UTC)">
