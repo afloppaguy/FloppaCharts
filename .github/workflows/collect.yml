@@ -1,12 +1,18 @@
 name: collect
 
-# Runs the collector on GitHub's servers so history builds while your PC is off.
-# Needs two repository secrets: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.
+# Collects Roblox data into Turso, then starts the next run itself.
+# GitHub's schedule never fired for this repository, so each run chains to
+# the next. The schedule stays as a backup that restarts the chain if it
+# ever stops. To stop collecting: cancel the run in progress.
 
 on:
   schedule:
-       - cron: "7,22,37,52 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
 
 concurrency:
   group: collect
@@ -15,7 +21,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,7 +29,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run collect -- 10
+      - name: Collect
+        id: collect
+        run: npm run collect -- 10
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      - name: Wait, then start the next run
+        if: ${{ !cancelled() }}
+        run: |
+          # After a failure wait longer, so a broken setup does not loop quickly.
+          if [ "${{ steps.collect.outcome }}" = "success" ]; then sleep 180; else sleep 900; fi
+          gh workflow run collect.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
