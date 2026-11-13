@@ -9,9 +9,9 @@ const g = globalThis as unknown as { __radarDb?: Client; __radarSchema?: Promise
 
 export function db(): Client {
   if (!g.__radarDb) {
-    const url = process.env.TURSO_DATABASE_URL || "file:data/radar.db";
+    const url = process.env.TURSO_DATABASE_URL?.trim() || "file:data/radar.db";
     if (url.startsWith("file:")) mkdirSync("data", { recursive: true });
-    g.__radarDb = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+    g.__radarDb = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN?.trim() });
   }
   return g.__radarDb;
 }
