@@ -1,6 +1,7 @@
 import { q } from "@/lib/db";
 import { getNiches } from "@/lib/niches";
 import { iconsFor } from "@/lib/queries";
+import { clientIp, memoryLimit, tooMany } from "@/lib/security";
 
 // Suggestions shown under the search box as you type: matching games (with
 // icons) and matching title keywords with how many games use them.
@@ -8,9 +9,10 @@ import { iconsFor } from "@/lib/queries";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  if (!memoryLimit(`suggest:${clientIp(req.headers)}`, 240, 60)) return tooMany(30);
   // Suggest for the word being typed: the part after the last comma.
   const raw = new URL(req.url).searchParams.get("q") ?? "";
-  const term = raw.split(",").pop()!.trim().toLowerCase();
+  const term = raw.split(",").pop()!.trim().toLowerCase().slice(0, 60);
   if (term.length < 2) return Response.json({ games: [], keywords: [] });
 
   const [games, niches, ideas] = await Promise.all([

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { nowMs } from "./clock";
 import { kvGet, kvSet, now, q, run } from "./db";
+import { decryptSecret, encryptSecret } from "./security";
 
 // Claude access for the dashboard: where the key comes from, which model to
 // use, and what has been spent this month.
@@ -53,7 +54,13 @@ export async function setAiSettings(patch: Partial<AiSettings>) {
 export async function getApiKey(): Promise<{ key: string; source: "env" | "settings" } | null> {
   if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: "env" };
   const saved = await kvGet("anthropic_key");
-  return saved ? { key: saved, source: "settings" } : null;
+  if (!saved) return null;
+  // A key saved before encryption existed is re-saved encrypted the first time it is read.
+  if (!saved.startsWith("enc:")) {
+    const sealed = encryptSecret(saved);
+    if (sealed !== saved) await kvSet("anthropic_key", sealed).catch(() => {});
+  }
+  return { key: decryptSecret(saved), source: "settings" };
 }
 
 export class NoKeyError extends Error {

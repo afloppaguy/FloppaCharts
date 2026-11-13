@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { validSession } from "@/proxy";
 import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
@@ -6,6 +8,10 @@ import { ago, num } from "@/lib/format";
 import { getStatusLight } from "@/lib/queries";
 
 export async function Sidebar() {
+  // The login screen shows no navigation and no numbers to someone who is not signed in.
+  const password = process.env.DASH_PASSWORD;
+  if (password && !(await validSession(password, (await cookies()).get("radar_session")?.value))) return null;
+
   let status: Awaited<ReturnType<typeof getStatusLight>> | null = null;
   try {
     status = await getStatusLight();

@@ -1,13 +1,15 @@
 import { q } from "@/lib/db";
 import { growth, likePct } from "@/lib/format";
 import { baseline, iconsFor, type Game } from "@/lib/queries";
+import { clientIp, memoryLimit, tooMany } from "@/lib/security";
 
 // Compact game cards for rows embedded in AI replies and briefings.
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const ids = [...new Set((new URL(req.url).searchParams.get("ids") ?? "").split(",").map(Number).filter((n) => Number.isFinite(n) && n > 0))].slice(0, 12);
+  if (!memoryLimit(`cards:${clientIp(req.headers)}`, 240, 60)) return tooMany(30);
+  const ids = [...new Set((new URL(req.url).searchParams.get("ids") ?? "").slice(0, 400).split(",").map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 12);
   if (!ids.length) return Response.json({ games: [] });
   const [rows, icons] = await Promise.all([q<Game>(`SELECT * FROM games WHERE universe_id IN (${ids.join(",")})`), iconsFor(ids)]);
   const byId = new Map(rows.map((g) => [Number(g.universe_id), g]));

@@ -1,7 +1,9 @@
 import { getApiKey } from "@/lib/ai";
 import { createChat, runChatTurn, type ChatEvent } from "@/lib/chat";
+import { rateLimit, tooMany } from "@/lib/security";
 
 // Streams one chat turn as newline-delimited JSON events.
+// Limits: 12 messages a minute and 300 a day, on top of the monthly budget.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -10,9 +12,16 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as { chatId?: number; message?: string; model?: string } | null;
   const message = body?.message?.trim();
   if (!message) return Response.json({ error: "Empty message" }, { status: 400 });
+  if (message.length > 12_000) return Response.json({ error: "That message is too long. Keep it under 12,000 characters." }, { status: 413 });
+  if (body?.chatId != null && !Number.isInteger(body.chatId)) return Response.json({ error: "Bad conversation id" }, { status: 400 });
   if (!(await getApiKey())) {
     return new Response(JSON.stringify({ type: "error", message: "No Claude API key is set. Add one in Settings." }) + "\n", { headers: { "Content-Type": "application/x-ndjson" } });
   }
+  const minute = await rateLimit("chat:minute", 12, 60);
+  if (!minute.ok) return tooMany(minute.retryAfter, "You are sending messages very quickly. Wait a moment.");
+  const day = await rateLimit("chat:day", 300, 86400);
+  if (!day.ok) return tooMany(day.retryAfter, "Daily message limit reached (300). It resets within a day.");
+
   const chatId = body?.chatId ?? (await createChat(message));
 
   const encoder = new TextEncoder();

@@ -5,6 +5,7 @@ import { getNiches } from "./niches";
 import * as ops from "./ops";
 import { baseline, getAlerts, getGame, getHistory, getNote, getPresets, getStatus, getTags, listGames, type Filters, type Game } from "./queries";
 import { getGamePasses, searchGames } from "./roblox";
+import { assertSafeQuery } from "./security";
 
 // Tools exposed to AI assistants over MCP. Reads cover the whole dataset with
 // paging; writes go through ops.ts so they are logged and undoable.
@@ -153,7 +154,9 @@ export const TOOLS: Tool[] = [
       "Run one read-only SQL SELECT against the SQLite database for anything the other tools cannot express. Tables: games(universe_id, root_place_id, name, description, creator_id, creator_name, creator_type, genre_l1, genre_l2, max_players, created_at, updated_at, playing, visits, favorites, up_votes, down_votes, peak_playing, p_first, p_1h, p_24h, p_7d, rise_score, charts JSON, source, first_seen, last_polled, backfilled), snapshots(universe_id, ts, playing, visits, favorites, up_votes, down_votes, src), tags(universe_id, tag, src), watchlist(universe_id, added_at), notes(universe_id, body, updated_at), presets, alerts, edit_log. Times are unix seconds. Returns at most 500 rows.",
     inputSchema: { type: "object", properties: { sql: { type: "string" } }, required: ["sql"] },
     run: async ({ sql }) => {
+      if (typeof sql !== "string" || sql.length > 5000) throw new Error("Query too long");
       if (!/^\s*(select|with)\b/i.test(sql) || sql.includes(";")) throw new Error("Only a single SELECT (or WITH ... SELECT) statement is allowed");
+      assertSafeQuery(sql);
       await ready();
       const tx = await db().transaction("read");
       try {

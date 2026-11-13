@@ -74,3 +74,11 @@ See [DEPLOY.md](DEPLOY.md) for the free 24/7 setup (Turso + GitHub Actions + Ver
 ## Checks
 
 `npx tsx scripts/selftest.ts` runs offline checks on the analytics parser, pricing and niche keyword logic.
+
+## Security
+
+- **Sign-in**: one password (`DASH_PASSWORD`). Sessions are signed, expire after 30 days, and are invalidated by changing the password or `SESSION_SECRET`. Five wrong passwords lock an address out for 15 minutes; 30 wrong passwords from anywhere pause sign-in for an hour. A hosted deployment without `DASH_PASSWORD` serves nothing.
+- **AI connection**: `/api/mcp` needs `MCP_TOKEN`. Ten wrong tokens lock an address out for 15 minutes; a valid token may make 240 requests a minute.
+- **Limits**: 12 chat messages a minute and 300 a day; 40 other AI actions an hour; search suggestions and game cards are throttled per address. All of this sits on top of the monthly AI budget.
+- **Saved keys**: the Claude key and Roblox keys saved in the dashboard are encrypted (AES-256-GCM) with a key derived from `SECRETS_KEY`, or else from `TURSO_AUTH_TOKEN`. If that value changes, saved keys must be entered again. AI SQL queries cannot read the tables that hold keys or security state.
+- **Browser**: a content security policy limits what pages may load (this site plus Roblox's image servers), the site cannot be framed, requests that change data must come from the site itself, and search engines are told not to index it.

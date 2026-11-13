@@ -28,3 +28,20 @@ const fixed = repairHistory(damaged);
 const ids = (m: (typeof fixed)[number]) => (typeof m.content === "string" ? [] : m.content.filter((b) => b.type === "tool_result").map((b) => b.tool_use_id));
 console.assert(fixed.length === 6 && ids(fixed[2]).join() === "a,b" && fixed[3].content === "are you done?" && ids(fixed[5]).join() === "c","repairHistory: " + JSON.stringify(fixed));
 console.log("repairHistory ok");
+
+// Security helpers: encryption round-trip, blocked tables, session signing.
+import { assertSafeQuery, decryptSecret, encryptSecret, safeEqual } from "../src/lib/security";
+import { createSession, validSession } from "../src/proxy";
+(async () => {
+  process.env.SECRETS_KEY = "selftest";
+  const sealed = encryptSecret("sk-test-123");
+  console.assert(sealed.startsWith("enc:v1:") && decryptSecret(sealed) === "sk-test-123" && decryptSecret("plain-old") === "plain-old", "encryption round-trip");
+  console.assert(encryptSecret("a") !== encryptSecret("a"), "encryption must be randomised");
+  const blocked = (sql: string) => { try { assertSafeQuery(sql); return false; } catch { return true; } };
+  console.assert(blocked("select value from kv") && blocked("SELECT * FROM rbx_keys") && blocked("select * from sqlite_master") && !blocked("select name from games where playing > 5"), "blocked tables");
+  console.assert(safeEqual("abc", "abc") && !safeEqual("abc", "abd") && !safeEqual("abc", "abcd"), "safeEqual");
+  const s = await createSession("pw");
+  const [exp, sig] = s.value.split(".");
+  console.assert((await validSession("pw", s.value)) && !(await validSession("other", s.value)) && !(await validSession("pw", `${Number(exp) + 99}.${sig}`)) && !(await validSession("pw", `1.${sig}`)) && !(await validSession("pw", undefined)), "session signing");
+  console.log("security ok");
+})();

@@ -157,6 +157,11 @@ const SCHEMA = [
     confidence TEXT,
     dismissed INTEGER NOT NULL DEFAULT 0
   )`,
+  `CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY,
+    window_start INTEGER NOT NULL,
+    count INTEGER NOT NULL
+  ) WITHOUT ROWID`,
   `CREATE TABLE IF NOT EXISTS briefings (
     day TEXT PRIMARY KEY,
     body TEXT NOT NULL,

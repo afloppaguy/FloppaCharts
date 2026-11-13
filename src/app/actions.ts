@@ -9,6 +9,7 @@ import { deleteChat } from "@/lib/chat";
 import { findGaps, generateBriefing } from "@/lib/insights";
 import { kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
+import { encryptSecret, rateLimit } from "@/lib/security";
 import { tagGames, untaggedRising } from "@/lib/tagging";
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
@@ -99,7 +100,7 @@ export async function setView(view: "grid" | "list") {
 
 export async function saveClaudeKey(formData: FormData) {
   const key = String(formData.get("key") ?? "").trim();
-  if (key) await kvSet("anthropic_key", key);
+  if (key && key.length <= 400) await kvSet("anthropic_key", encryptSecret(key));
   revalidatePath("/settings");
 }
 
@@ -125,10 +126,17 @@ export async function saveBudget(formData: FormData) {
   revalidatePath("/settings");
 }
 
+/** At most 40 AI actions an hour (tagging, checks, gap finder, briefing), on top of the monthly budget. */
+async function aiGate() {
+  const r = await rateLimit("ai-actions", 40, 3600);
+  if (!r.ok) throw new Error(`AI action limit reached (40 an hour). Try again in ${Math.ceil(r.retryAfter / 60)} minutes.`);
+}
+
 // ---- AI tagging ----
 
 export async function tagGameAction(id: number): Promise<Result> {
   try {
+    await aiGate();
     const r = await tagGames([id], "ai");
     revalidatePath(`/games/${id}`);
     return { ok: true, message: r.tagged ? "Tagged" : "The description was too vague to tag" };
@@ -139,6 +147,7 @@ export async function tagGameAction(id: number): Promise<Result> {
 
 export async function tagRisingAction(): Promise<Result> {
   try {
+    await aiGate();
     const ids = await untaggedRising(40);
     if (!ids.length) return { ok: true, message: "Every rising game is already tagged" };
     const r = await tagGames(ids, "ai");
@@ -163,7 +172,7 @@ export async function connectMyGame(formData: FormData) {
     const universeId = await ops.resolveUniverse(ref);
     let keyId = existing;
     if (apiKey) {
-      const r = await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label, apiKey, now()]);
+      const r = await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label.slice(0, 60), encryptSecret(apiKey), now()]);
       keyId = Number(r.lastInsertRowid);
     }
     let name = `Game ${universeId}`;
@@ -202,6 +211,7 @@ export async function refreshMyGame(formData: FormData) {
 
 export async function runAnalysis(id: number): Promise<Result> {
   try {
+    await aiGate();
     const r = await analyzeGame(id);
     revalidatePath(`/my-games/${id}`);
     return { ok: true, message: `${r.findings} findings ($${r.cost.toFixed(3)})` };
@@ -234,6 +244,7 @@ export async function setModelAction(id: string) {
 
 export async function refreshBriefing(): Promise<Result> {
   try {
+    await aiGate();
     await generateBriefing();
     revalidatePath("/");
     return { ok: true, message: "Briefing updated" };
@@ -244,6 +255,7 @@ export async function refreshBriefing(): Promise<Result> {
 
 export async function runGapFinder(): Promise<Result> {
   try {
+    await aiGate();
     const r = await findGaps();
     revalidatePath("/gaps");
     return { ok: true, message: `Found ${r.gaps} gaps ($${r.cost.toFixed(3)})` };
@@ -255,6 +267,11 @@ export async function runGapFinder(): Promise<Result> {
 export async function setAutoTagAction(on: boolean) {
   await kvSet("auto_tag", on ? "on" : "off");
   revalidatePath("/settings");
+}
+
+export async function logoutAction() {
+  (await cookies()).delete("radar_session");
+  redirect("/login");
 }
 
 // ---- Compare ----

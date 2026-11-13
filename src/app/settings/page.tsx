@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
+import { logoutAction, removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
 import { PageHeader, Section } from "@/components/page-parts";
 import { AutoTagToggle, ModelPicker } from "@/components/ai-buttons";
 import { getAutoTag } from "@/lib/insights";
@@ -111,6 +111,28 @@ export default async function SettingsPage() {
         <p className="text-xs text-muted-foreground">
           The dashboard only counts what it spends itself. If you use the same credits elsewhere, enter what is really left and it will correct its count.
         </p>
+      </Section>
+
+      <Section title="Security" hint="How this dashboard is protected">
+        <ul className="grid gap-1.5 text-sm text-muted-foreground">
+          <li>
+            <span className="text-foreground">Sign-in:</span>{" "}
+            {process.env.DASH_PASSWORD ? "password required. Five wrong attempts lock an address out for 15 minutes; sessions last 30 days." : "no password set, so anyone who can reach this address can use it. Fine on your own PC; a hosted copy refuses to run without one."}
+          </li>
+          <li>
+            <span className="text-foreground">Saved keys:</span> your Claude and Roblox API keys are stored encrypted, and AI queries cannot read the tables that hold them.
+          </li>
+          <li>
+            <span className="text-foreground">Limits:</span> 12 chat messages a minute and 300 a day; 240 AI-connection requests a minute; ten wrong connection tokens lock an address out.
+          </li>
+        </ul>
+        {process.env.DASH_PASSWORD && (
+          <form action={logoutAction}>
+            <Button type="submit" variant="outline" size="sm">
+              Sign out on this device
+            </Button>
+          </form>
+        )}
       </Section>
 
       <Section title="AI connection (MCP)" hint="Lets Claude and other assistants read and edit this data">

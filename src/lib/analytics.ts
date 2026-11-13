@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getClient, pickModel, recordUsage } from "./ai";
 import { nowMs } from "./clock";
 import { now, q, run } from "./db";
+import { decryptSecret } from "./security";
 
 // "My games": analytics for games you own, read from Roblox's Open Cloud
 // Analytics Query API (beta) with an API key you create. The key needs the
@@ -141,7 +142,7 @@ export async function getMyGame(universeId: number) {
     "SELECT g.universe_id, g.name, g.key_id, k.api_key, k.label FROM my_games g JOIN rbx_keys k ON k.id = g.key_id WHERE g.universe_id = ?",
     [universeId],
   );
-  return r[0] ?? null;
+  return r[0] ? { ...r[0], api_key: decryptSecret(r[0].api_key) } : null;
 }
 
 /** Everything the My Game page shows: each metric for the last `days` days against the `days` before that. */
