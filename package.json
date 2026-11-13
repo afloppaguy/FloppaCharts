@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "collect": "tsx scripts/collect.ts",
-    "collect:loop": "tsx scripts/collect.ts --loop 12"
+    "collect": "tsx --env-file-if-exists=.env.local scripts/collect.ts",
+    "collect:loop": "tsx --env-file-if-exists=.env.local scripts/collect.ts --loop 12"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

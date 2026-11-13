@@ -79,7 +79,7 @@ export async function discoverCharts(extraViews = 2) {
       stmts.push({
         sql: `INSERT INTO games (universe_id, root_place_id, name, genre_l1, playing, up_votes, down_votes, peak_playing, p_first, charts, charts_seen, source, first_seen, next_poll)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'charts', ?, 0)`,
-        args: [id, g.rootPlaceId, g.name, g.genreL1 ?? null, g.playerCount, g.totalUpVotes, g.totalDownVotes, g.playerCount, g.playerCount, charts, t, t],
+        args: [id, g.rootPlaceId ?? null, g.name ?? "", g.genreL1 ?? null, g.playerCount ?? 0, g.totalUpVotes ?? 0, g.totalDownVotes ?? 0, g.playerCount ?? 0, g.playerCount ?? 0, charts, t, t],
       });
     } else if (primary.has(id) && (ex.charts !== charts || (ex.charts_seen ?? 0) < t - 3600)) {
       stmts.push({ sql: "UPDATE games SET charts = ?, charts_seen = ?, next_poll = MIN(next_poll, ?) WHERE universe_id = ?", args: [charts, t, t + 900, id] });
@@ -97,6 +97,8 @@ type Baseline = {
   p_first: number | null;
   first_seen: number;
   peak_playing: number;
+  up_votes: number;
+  down_votes: number;
   charts: string;
   watched: number;
   p1h: number | null;
@@ -111,7 +113,7 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
   const ids = details.map((d) => d.id);
   const base = new Map<number, Baseline>();
   const rows = await q<Baseline>(
-    `SELECT g.universe_id, g.p_first, g.first_seen, g.peak_playing, g.charts,
+    `SELECT g.universe_id, g.p_first, g.first_seen, g.peak_playing, g.up_votes, g.down_votes, g.charts,
             (SELECT 1 FROM watchlist w WHERE w.universe_id = g.universe_id) AS watched,
             (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 3 * 3600} AND ${t - 3000} ORDER BY s.ts DESC LIMIT 1) AS p1h,
             (SELECT playing FROM snapshots s WHERE s.universe_id = g.universe_id AND s.ts BETWEEN ${t - 48 * 3600} AND ${t - 23 * 3600} ORDER BY s.ts DESC LIMIT 1) AS p24,
@@ -144,14 +146,15 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
               genre_l1 = COALESCE(excluded.genre_l1, genre_l1), genre_l2 = excluded.genre_l2, max_players = excluded.max_players,
               created_at = excluded.created_at, updated_at = excluded.updated_at, playing = excluded.playing, visits = excluded.visits,
               favorites = excluded.favorites,
-              up_votes = COALESCE(excluded.up_votes, up_votes), down_votes = COALESCE(excluded.down_votes, down_votes),
+              up_votes = excluded.up_votes, down_votes = excluded.down_votes,
               peak_playing = excluded.peak_playing, p_first = COALESCE(p_first, excluded.p_first),
               p_1h = excluded.p_1h, p_24h = excluded.p_24h, p_7d = excluded.p_7d, rise_score = excluded.rise_score,
               last_polled = excluded.last_polled, next_poll = excluded.next_poll`,
       args: [
         d.id, d.rootPlaceId, d.name ?? "", d.description ?? null, d.creator?.id ?? null, d.creator?.name ?? null, d.creator?.type ?? null,
         d.genre_l1 || null, d.genre_l2 || null, d.maxPlayers ?? null, createdAt, iso(d.updated), d.playing, d.visits, d.favoritedCount ?? 0,
-        v?.up ?? null, v?.down ?? null, peak, pFirst, b?.p1h ?? null, b?.p24 ?? null, b?.p7d ?? null, score,
+        // Votes come from a separate endpoint; when it has no answer, keep what is stored.
+        v?.up ?? b?.up_votes ?? 0, v?.down ?? b?.down_votes ?? 0, peak, pFirst, b?.p1h ?? null, b?.p24 ?? null, b?.p7d ?? null, score,
         source ?? "charts", t, t, next,
       ],
     });
@@ -264,7 +267,7 @@ export async function scanNew(name: string, lagHours: number, minPlaying: number
       const knownIds = new Set(known.map((r) => Number(r.universe_id)));
       const fresh = keep.filter((d) => !knownIds.has(d.id));
       if (fresh.length) {
-        await saveDetails(fresh, new Map(), "scan");
+        await saveDetails(fresh, await getVotes(fresh.map((d) => d.id)).catch(() => new Map()), "scan");
         kept += fresh.length;
       }
     }
