@@ -22,12 +22,24 @@ npm run dev            # dashboard at http://localhost:3000
 | Search | `search_roblox` (MCP) adds every result it finds |
 | Rolimons backfill | On demand, per game: pulls older history from the game's public Rolimons page |
 
+## Signals
+
+| Signal | Meaning | History needed |
+|---|---|---|
+| Growth | Players now against 24 hours ago (or 1 hour ago, or first tracked, until a day of history exists) | 1 hour to 1 day |
+| Rise score | Players gained relative to the game's size; the default sort | same as growth |
+| Pace | Visits per hour right now divided by the game's lifetime average. x2 = twice its usual rate | two snapshots |
+| Est. session | Players online divided by visits per minute: roughly how long one visit lasts | two snapshots |
+
+Timestamps are always real time: on start-up the app checks a Roblox server's clock and corrects for a wrong local clock.
+
 ## Pages
 
 - **Home**: New and gaining, Fastest growing, Rising niches, plus preset shortcuts
 - **Explore** and **Watchlist**: grid or list view (remembered), one-click watch and Play on every game, filters (players, age, genre, like ratio), sorting and paging; add a game by link or ID
 - **Game**: stats, history chart, Play button, watch, older-history backfill, playtest notes, tags, game passes
 - **Niches**: sub-genres, AI/user tags and title words, ranked by how many separate games in each group are hot
+- **Compare**: up to five games on one chart, by players or indexed growth, with a side-by-side stats table
 - **Alerts**: watchlist games that jump 50%+ in 24h
 - **Activity**: every edit by you or an AI, with undo
 
