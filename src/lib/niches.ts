@@ -1,4 +1,4 @@
-import { now, q } from "./db";
+import { kvGet, kvSet, now, q } from "./db";
 
 // A niche is a group of similar games. Three ways of grouping, from most to
 // least reliable:
@@ -103,7 +103,7 @@ function summarize(kind: NicheKind, term: string, gs: Row[], t: number): Niche {
   const oneHit = hot <= 1 && gain > 0 && topGain / gain > 0.7;
   // Breadth first: several hot games in a small group beats one hot game in a
   // huge group. New entrants add a little; declines subtract a little.
-  const share = hot / gs.length;
+  const share = gs.length ? hot / gs.length : 0;
   const score = Math.round((hot * (0.5 + share) + fresh * 0.3 - declining * 0.3) * (oneHit ? 0.3 : 1) * 10) / 10;
   return {
     kind,
@@ -120,13 +120,37 @@ function summarize(kind: NicheKind, term: string, gs: Row[], t: number): Niche {
   };
 }
 
+// Niches are computed from a few thousand rows, so the result is cached: in
+// memory for this server, and in the database for servers that just started.
+const TTL_MS = 10 * 60_000;
 let cache: { at: number; niches: Niche[] } | null = null;
+let rowCache: { at: number; rows: Row[] } | null = null;
 export const clearNicheCache = () => {
   cache = null;
+  rowCache = null;
+  void kvSet("niche_cache", JSON.stringify({ at: 0, niches: [] })).catch(() => {});
 };
 
+async function loadRows(): Promise<Row[]> {
+  if (rowCache && Date.now() - rowCache.at < TTL_MS) return rowCache.rows;
+  const rows = await q<Row>(
+    `SELECT universe_id, name, playing, created_at, p_24h, p_1h, p_first, first_seen, genre_l1, genre_l2, charts
+     FROM games WHERE playing >= 20 AND last_polled IS NOT NULL ORDER BY playing DESC LIMIT 8000`,
+  );
+  rowCache = { at: Date.now(), rows };
+  return rows;
+}
+
 export async function getNiches(kind?: NicheKind): Promise<Niche[]> {
-  if (!cache || Date.now() - cache.at > 5 * 60_000) cache = { at: Date.now(), niches: await build() };
+  if (!cache || Date.now() - cache.at > TTL_MS) {
+    const stored = await kvGet("niche_cache");
+    const parsed = stored ? (JSON.parse(stored) as { at: number; niches: Niche[] }) : null;
+    if (parsed && now() * 1000 - parsed.at < TTL_MS && parsed.niches.length) cache = { at: Date.now() - (now() * 1000 - parsed.at), niches: parsed.niches };
+    else {
+      cache = { at: Date.now(), niches: await build() };
+      await kvSet("niche_cache", JSON.stringify({ at: now() * 1000, niches: cache.niches })).catch(() => {});
+    }
+  }
   return kind ? cache.niches.filter((n) => n.kind === kind) : cache.niches;
 }
 
@@ -139,12 +163,25 @@ export async function getRisingNiches(limit = 9): Promise<Niche[]> {
     .slice(0, limit);
 }
 
+/**
+ * Look up any words the user types ("smash, throw, steal, egg"): for each one,
+ * the games whose title contains a word starting with it, summarised the same
+ * way as a niche. Works for words that never made the automatic list.
+ */
+export async function keywordStats(input: string): Promise<Niche[]> {
+  const words = [...new Set(input.toLowerCase().split(",").map((w) => w.trim().replace(/[^a-z0-9 ]/g, "")).filter((w) => w.length >= 2))].slice(0, 10);
+  if (!words.length) return [];
+  const rows = await loadRows();
+  const t = now();
+  return words.map((word) => {
+    const re = new RegExp(`(^|[^a-z])${word.replace(/\s+/g, "[^a-z]+")}`, "i");
+    return summarize("keyword", word, rows.filter((r) => re.test(r.name)), t);
+  });
+}
+
 async function build(): Promise<Niche[]> {
   const t = now();
-  const rows = await q<Row>(
-    `SELECT universe_id, name, playing, created_at, p_24h, p_1h, p_first, first_seen, genre_l1, genre_l2, charts
-     FROM games WHERE playing >= 20 AND last_polled IS NOT NULL ORDER BY playing DESC LIMIT 8000`,
-  );
+  const rows = await loadRows();
   const byId = new Map(rows.map((r) => [Number(r.universe_id), r]));
   const out: Niche[] = [];
 

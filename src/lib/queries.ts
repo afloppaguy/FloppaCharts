@@ -1,5 +1,5 @@
 import type { InValue } from "@libsql/client";
-import { kvGet, now, q } from "./db";
+import { db, kvGet, now, q } from "./db";
 import { getIcons } from "./roblox";
 
 export type Game = {
@@ -107,8 +107,14 @@ export async function listGames(f: Filters): Promise<{ games: Game[]; total: num
   const where: string[] = ["g.last_polled IS NOT NULL"];
   const args: InValue[] = [];
   if (f.q) {
-    where.push("(g.name LIKE ? OR g.creator_name LIKE ?)");
-    args.push(`%${f.q}%`, `%${f.q}%`);
+    // "smash, throw, egg" finds games matching any of the words, in the title,
+    // description, creator name or tags.
+    const words = f.q.split(",").map((w) => w.trim()).filter(Boolean).slice(0, 8);
+    const any = words.map(() => "(g.name LIKE ? OR g.description LIKE ? OR g.creator_name LIKE ? OR EXISTS (SELECT 1 FROM tags t WHERE t.universe_id = g.universe_id AND t.tag LIKE ?))");
+    if (any.length) {
+      where.push(`(${any.join(" OR ")})`);
+      for (const w of words) args.push(`%${w}%`, `%${w}%`, `%${w}%`, `%${w}%`);
+    }
   }
   if (f.min != null) { where.push("g.playing >= ?"); args.push(f.min); }
   if (f.max != null) { where.push("g.playing <= ?"); args.push(f.max); }
@@ -185,6 +191,16 @@ export async function getAlerts(limit = 100) {
   );
 }
 
+/** What the sidebar needs on every page: three cheap lookups, no table scans. */
+export async function getStatusLight() {
+  const [counts, last, unread] = await Promise.all([
+    q<{ total: number }>("SELECT COUNT(*) AS total FROM games"),
+    kvGet("last_cycle"),
+    q<{ n: number }>("SELECT COUNT(*) AS n FROM alerts WHERE read = 0"),
+  ]);
+  return { games: Number(counts[0].total ?? 0), lastCycle: last ? (JSON.parse(last) as { ts: number }) : null, unreadAlerts: Number(unread[0].n ?? 0) };
+}
+
 export async function getStatus() {
   const [counts, snaps, last, unread] = await Promise.all([
     q<{ total: number; active: number; hot: number }>(
@@ -205,26 +221,45 @@ export async function getStatus() {
   };
 }
 
-// Game icons come from Roblox at render time and are cached in memory.
-const iconCache = new Map<number, { url: string; at: number }>();
+// Game icons: memory first, then the database, and only then Roblox. Storing
+// them means a freshly started server (every cold start on Vercel) does not
+// have to wait on Roblox before it can render a page.
+const iconCache = new Map<number, string>();
+const ICON_TTL = 14 * 86400;
+
 export async function iconsFor(ids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
-  const missing: number[] = [];
-  for (const id of ids) {
+  let missing: number[] = [];
+  for (const id of [...new Set(ids)]) {
     const c = iconCache.get(id);
-    if (c && Date.now() - c.at < 6 * 3600_000) out.set(id, c.url);
+    if (c) out.set(id, c);
     else missing.push(id);
   }
-  if (missing.length) {
-    try {
+  if (!missing.length) return out;
+  try {
+    for (let i = 0; i < missing.length; i += 400) {
+      const rows = await q<{ universe_id: number; url: string }>(
+        `SELECT universe_id, url FROM icons WHERE fetched_at > ? AND universe_id IN (${missing.slice(i, i + 400).join(",")})`,
+        [now() - ICON_TTL],
+      );
+      for (const r of rows) {
+        iconCache.set(Number(r.universe_id), r.url);
+        out.set(Number(r.universe_id), r.url);
+      }
+    }
+    missing = missing.filter((id) => !out.has(id));
+    if (missing.length) {
       const got = await getIcons(missing);
+      const t = now();
+      const stmts = [...got].map(([id, url]) => ({ sql: "INSERT OR REPLACE INTO icons (universe_id, url, fetched_at) VALUES (?, ?, ?)", args: [id, url, t] }));
+      for (let i = 0; i < stmts.length; i += 200) await db().batch(stmts.slice(i, i + 200), "write");
       for (const [id, url] of got) {
-        iconCache.set(id, { url, at: Date.now() });
+        iconCache.set(id, url);
         out.set(id, url);
       }
-    } catch {
-      // icons are decoration; never fail a page over them
     }
+  } catch {
+    // icons are decoration; never fail a page over them
   }
   return out;
 }

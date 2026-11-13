@@ -3,12 +3,12 @@ import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Li
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { ago, num } from "@/lib/format";
-import { getStatus } from "@/lib/queries";
+import { getStatusLight } from "@/lib/queries";
 
 export async function Sidebar() {
-  let status: Awaited<ReturnType<typeof getStatus>> | null = null;
+  let status: Awaited<ReturnType<typeof getStatusLight>> | null = null;
   try {
-    status = await getStatus();
+    status = await getStatusLight();
   } catch {
     status = null;
   }
@@ -49,7 +49,7 @@ export async function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="mt-auto px-2.5 text-xs leading-relaxed text-muted-foreground" title={`${num(status?.active ?? 0)} games with 10+ players`}>
+      <div className="mt-auto px-2.5 text-xs leading-relaxed text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <span className={`size-1.5 rounded-full ${stale ? "bg-amber-500" : "bg-emerald-500"}`} />
           Updated {ago(status?.lastCycle?.ts)}

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { connectMyGame } from "@/app/actions";
-import { GameIcon } from "@/components/game-table";
+import { currentView, GameIcon } from "@/components/game-table";
+import { ViewToggle } from "@/components/quick-actions";
 import { PageHeader, Section } from "@/components/page-parts";
 import { q } from "@/lib/db";
 import { iconsFor } from "@/lib/queries";
@@ -16,14 +17,27 @@ export default async function MyGamesPage({ searchParams }: { searchParams: Prom
     q<{ universe_id: number; name: string; label: string }>("SELECT g.universe_id, g.name, k.label FROM my_games g JOIN rbx_keys k ON k.id = g.key_id ORDER BY g.added_at DESC"),
     q<{ id: number; label: string }>("SELECT id, label FROM rbx_keys ORDER BY id"),
   ]);
-  const icons = await iconsFor(games.map((g) => Number(g.universe_id)));
+  const [icons, view] = await Promise.all([iconsFor(games.map((g) => Number(g.universe_id))), currentView()]);
 
   return (
     <div className="mx-auto grid max-w-3xl gap-10">
-      <PageHeader title="My games" subtitle="Analytics for games you own, read straight from Roblox with your own API keys." />
+      <PageHeader title="My games" subtitle="Analytics for games you own, read straight from Roblox with your own API keys.">
+        {games.length > 0 && <ViewToggle view={view} />}
+      </PageHeader>
       {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
 
-      {games.length > 0 && (
+      {games.length > 0 && view === "grid" && (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-x-4 gap-y-6">
+          {games.map((g) => (
+            <Link key={g.universe_id} href={`/my-games/${g.universe_id}`} className="group block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <GameIcon url={icons.get(Number(g.universe_id))} className="aspect-square w-full rounded-xl transition group-hover:brightness-110" />
+              <div className="mt-2 truncate text-sm font-medium">{g.name}</div>
+              <div className="truncate text-xs text-muted-foreground">Key: {g.label}</div>
+            </Link>
+          ))}
+        </div>
+      )}
+      {games.length > 0 && view === "list" && (
         <div className="grid gap-0.5">
           {games.map((g) => (
             <Link key={g.universe_id} href={`/my-games/${g.universe_id}`} className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50">

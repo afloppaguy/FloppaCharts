@@ -54,10 +54,11 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <input
-          aria-label="Search by name or creator"
+          aria-label="Search titles, descriptions, creators and tags; separate several words with commas"
+          title="Matches titles, descriptions, creators and tags. Separate several words with commas to find games matching any of them."
           value={text}
-          placeholder="Search games"
-          className={`${pill} w-56 pl-8 placeholder:text-muted-foreground`}
+          placeholder="Search: smash, throw, egg"
+          className={`${pill} w-64 pl-8 placeholder:text-muted-foreground`}
           onChange={(e) => {
             const v = e.target.value;
             setText(v);

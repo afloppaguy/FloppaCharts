@@ -157,6 +157,11 @@ const SCHEMA = [
     confidence TEXT,
     dismissed INTEGER NOT NULL DEFAULT 0
   )`,
+  `CREATE TABLE IF NOT EXISTS icons (
+    universe_id INTEGER PRIMARY KEY,
+    url TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
