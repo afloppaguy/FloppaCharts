@@ -196,7 +196,7 @@ export default async function MyGamePage({ params, searchParams }: { params: Pro
           </Section>
 
           <div className="grid gap-10 xl:grid-cols-2">
-            <Section title="Funnel" hint="From seeing your game to paying">
+            <Section title="Funnel" hint="From seeing your game to staying in it">
               {(() => {
                 const steps = funnel(dash);
                 if (steps.length < 2) return <p className="text-sm text-muted-foreground">Not enough acquisition data yet.</p>;
@@ -206,7 +206,7 @@ export default async function MyGamePage({ params, searchParams }: { params: Pro
                       <div key={s.label}>
                         {i > 0 && (
                           <div className="mb-2 ml-3 border-l border-border pl-3 text-xs text-muted-foreground">
-                            <span className={s.ofPrevious != null && s.ofPrevious < 20 ? "text-rose-400" : "text-foreground"}>{s.ofPrevious!.toFixed(s.ofPrevious! < 10 ? 1 : 0)}%</span> continue
+                            <span className="text-foreground">{s.ofPrevious!.toFixed(s.ofPrevious! < 10 ? 1 : 0)}%</span> continue
                           </div>
                         )}
                         <div className="relative overflow-hidden rounded-lg bg-muted/40 px-3.5 py-2.5">

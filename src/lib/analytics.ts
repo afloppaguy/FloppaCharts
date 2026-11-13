@@ -257,7 +257,8 @@ export function funnel(d: Dashboard) {
     { label: "Clicked", value: get("UniqueUsersWithClicks") },
     { label: "Played", value: get("UniqueUsersWithPlaySessions") },
     { label: "Stayed", value: get("QualifiedUniqueUsersWithPlaySessions") },
-    { label: "Paid", value: get("PayingUsers") },
+    // Paying is deliberately not a funnel step: payers include returning players, and a
+    // payer rate of a few percent is normal, so it would always look like a huge drop.
   ].filter((s): s is { label: string; value: number } => s.value != null && s.value > 0);
   return steps.map((s, i) => ({ ...s, ofPrevious: i ? (s.value / steps[i - 1].value) * 100 : null, ofFirst: (s.value / steps[0].value) * 100 }));
 }
@@ -297,6 +298,9 @@ Rules:
 - Analytics only. You have never seen or played this game and know nothing about its content. Never say how to fix anything, never suggest features, changes, or experiments, and never guess at causes inside the game. State what the data shows and stop.
 - Every finding must quote the numbers behind it, including what it is compared against (previous period, another platform, another segment, the step before).
 - Judge significance by size and sample. Small daily player counts make percentages noisy: when the player base is small or the change is small, lower the confidence or leave the finding out. A change under about 5% is not a finding.
+- You have no industry benchmarks, so never call a number low or high on its own. A finding needs a comparison inside this game's data: against the previous period, or between segments of the same kind (one platform against another, one source against another). Do not compare different kinds of step with each other: an impression-to-click rate, a click-to-play rate and a payer rate are naturally of very different sizes, and one being smaller than another means nothing.
+- Some rates are small in every healthy game. Only a few percent of players ever pay, and only a few percent of people who see a tile click it. Never flag payer conversion, revenue per player or tile click rate for their level alone; flag them only if they fell meaningfully against the previous period or differ sharply between segments.
+- The developer has dismissed some earlier findings as not real problems (listed in the data). Do not raise those again unless the numbers have clearly worsened since.
 - Missing metrics are not findings. If a metric has no data, ignore it.
 - Order findings by how much they matter. Report at most 6 choke-points and 4 healthy checks. If nothing is wrong, return only healthy checks.`;
 
@@ -320,13 +324,14 @@ export async function analyzeGame(universeId: number) {
     revenue_by_product: seg(dash.segments.products),
     session_dropoff: { sessions: dash.survival.sessions, pct_gone_within_30s: round(dash.survival.leftBy30s), pct_gone_within_2min: round(dash.survival.leftBy2min), pct_still_playing_at_10min: round(dash.survival.stillAt10min), seconds_until_half_have_left: dash.survival.halfGoneSec },
   };
+  const dismissed = await q<{ title: string; evidence: string }>("SELECT title, evidence FROM findings WHERE universe_id = ? AND dismissed = 1 ORDER BY id DESC LIMIT 15", [universeId]);
   const client = await getClient();
   const model = await pickModel();
   const response = await client.messages.parse({
     model,
     max_tokens: 8000,
     system: ANALYST,
-    messages: [{ role: "user", content: `Analytics for the game, as JSON:\n\n${JSON.stringify(payload)}` }],
+    messages: [{ role: "user", content: `Analytics for the game, as JSON:\n\n${JSON.stringify({ ...payload, dismissed_by_developer_as_not_a_problem: dismissed.map((d) => `${d.title}: ${d.evidence}`) })}` }],
     output_config: { format: zodOutputFormat(Findings), effort: "medium" },
   });
   const cost = await recordUsage("choke-points", model, response.usage);
