@@ -186,9 +186,18 @@ export function ready(): Promise<void> {
       await syncClock();
       for (const sql of SCHEMA) await c.execute(sql);
       // Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS".
-      for (const col of ["visit_rate REAL", "pace REAL", "est_session_min REAL"]) {
+      const added: [string, string][] = [
+        ["games", "visit_rate REAL"],
+        ["games", "pace REAL"],
+        ["games", "est_session_min REAL"],
+        ["chats", "summary TEXT"],
+        ["chats", "cost_usd REAL NOT NULL DEFAULT 0"],
+        ["chats", "model TEXT"],
+        ["chats", "busy_until INTEGER NOT NULL DEFAULT 0"],
+      ];
+      for (const [table, col] of added) {
         try {
-          await c.execute(`ALTER TABLE games ADD COLUMN ${col}`);
+          await c.execute(`ALTER TABLE ${table} ADD COLUMN ${col}`);
         } catch {
           // already there
         }
@@ -212,9 +221,21 @@ export function ready(): Promise<void> {
   return g.__radarSchema;
 }
 
+/** A dropped or slow connection to the database is retried once before giving up. Reads only: a write is never repeated blindly. */
+async function readWithRetry(sql: string, args: InValue[]) {
+  try {
+    return await db().execute({ sql, args });
+  } catch (e) {
+    const text = `${e instanceof Error ? e.message : e} ${(e as { cause?: { code?: string } })?.cause?.code ?? ""}`;
+    if (!/fetch failed|TIMEOUT|ECONNRESET|socket|network/i.test(text)) throw e;
+    await new Promise((r) => setTimeout(r, 400));
+    return db().execute({ sql, args });
+  }
+}
+
 export async function q<T = Record<string, unknown>>(sql: string, args: InValue[] = []): Promise<T[]> {
   await ready();
-  const r = await db().execute({ sql, args });
+  const r = await readWithRetry(sql, args);
   // Plain objects, so rows can be handed straight to client components.
   return r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]]))) as T[];
 }

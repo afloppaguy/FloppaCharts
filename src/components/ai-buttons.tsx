@@ -1,10 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { runAnalysis, tagGameAction, tagRisingAction } from "@/app/actions";
+import { runAnalysis, setModelAction, tagGameAction, tagRisingAction } from "@/app/actions";
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -27,6 +27,35 @@ function AiButton({ label, busy, action, variant = "outline", title }: { label: 
       <Sparkles />
       {pending ? busy : label}
     </Button>
+  );
+}
+
+export function ModelPicker({ models, current }: { models: { id: string; label: string; blurb: string; input: number; output: number }[]; current: string }) {
+  const [value, setValue] = useState(current);
+  const [pending, start] = useTransition();
+  return (
+    <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Model">
+      {models.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          role="radio"
+          aria-checked={m.id === value}
+          disabled={pending}
+          onClick={() => {
+            setValue(m.id);
+            start(() => setModelAction(m.id));
+          }}
+          className={`rounded-xl px-3.5 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring ${m.id === value ? "bg-foreground text-background" : "bg-muted/50 hover:bg-muted"}`}
+        >
+          <div className="text-sm font-medium">{m.label}</div>
+          <div className={`text-xs ${m.id === value ? "opacity-70" : "text-muted-foreground"}`}>{m.blurb}</div>
+          <div className={`mt-1 text-xs tabular-nums ${m.id === value ? "opacity-70" : "text-muted-foreground"}`}>
+            ${m.input} in · ${m.output} out per 1M tokens
+          </div>
+        </button>
+      ))}
+    </div>
   );
 }
 

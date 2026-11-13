@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { TagGameButton } from "@/components/ai-buttons";
 import { BackfillButton, Notes, Tags, WatchButton } from "@/components/game-actions";
 import { getApiKey } from "@/lib/ai";
+import { pollGames } from "@/lib/collector";
 import { GameIcon, Growth, Pace, sessionText } from "@/components/game-table";
 import { HistoryChart, type Point } from "@/components/history-chart";
 import { Section } from "@/components/page-parts";
@@ -44,8 +45,14 @@ function Delta({ label, playing, then }: { label: string; playing: number; then:
 export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isFinite(id)) notFound();
-  const g = await getGame(id);
+  let g = await getGame(id);
   if (!g) notFound();
+  // An open game page is kept live: if its numbers are more than two minutes
+  // old, fetch fresh ones from Roblox before showing it (giving up after 5s).
+  if (now() - Number(g.last_polled ?? 0) > 120) {
+    const fresh = await Promise.race([pollGames([id]).then(() => getGame(id)), new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))]).catch(() => null);
+    if (fresh) g = fresh;
+  }
 
   const hasAi = !!(await getApiKey());
   const [history, note, tags, icons, passes] = await Promise.all([

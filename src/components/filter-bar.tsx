@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { X } from "lucide-react";
+import { SearchBox } from "@/components/search-box";
 import { Slider } from "@/components/ui/slider";
 
 const STEPS = [0, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 50000];
@@ -26,12 +27,12 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const [text, setText] = useState(sp.get("q") ?? "");
+  // Bumped by "Clear" so the search box starts over with an empty field.
+  const [searchKey, setSearchKey] = useState(0);
   // While dragging, the slider shows the dragged value; once the URL catches up it follows the URL again.
   const spMin = sp.get("min");
   const [drag, setDrag] = useState<{ step: number; spMin: string | null } | null>(null);
   const step = drag && drag.spMin === spMin ? drag.step : stepOf(Number(spMin ?? defaultMin));
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function set(patch: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString());
@@ -51,22 +52,7 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input
-          aria-label="Search titles, descriptions, creators and tags; separate several words with commas"
-          title="Matches titles, descriptions, creators and tags. Separate several words with commas to find games matching any of them."
-          value={text}
-          placeholder="Search: smash, throw, egg"
-          className={`${pill} w-64 pl-8 placeholder:text-muted-foreground`}
-          onChange={(e) => {
-            const v = e.target.value;
-            setText(v);
-            if (timer.current) clearTimeout(timer.current);
-            timer.current = setTimeout(() => set({ q: v }), 300);
-          }}
-        />
-      </div>
+      <SearchBox key={searchKey} initial={sp.get("q") ?? ""} onSearch={(v) => set({ q: v })} className="w-72" />
       <div className={`${pill} flex items-center gap-3`}>
         <span className="w-28 text-sm whitespace-nowrap tabular-nums">
           {STEPS[step].toLocaleString("en-US")}+ <span className="text-muted-foreground">players</span>
@@ -130,7 +116,7 @@ export function FilterBar({ genres, sorts, defaultMin }: { genres: string[]; sor
           type="button"
           className="h-8 rounded-lg px-2 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => {
-            setText("");
+            setSearchKey((k) => k + 1);
             router.replace(sp.get("watch") ? `${pathname}?watch=1` : pathname, { scroll: false });
           }}
         >

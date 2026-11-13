@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
 import { PageHeader, Section } from "@/components/page-parts";
-import { getApiKey, getBudget } from "@/lib/ai";
+import { ModelPicker } from "@/components/ai-buttons";
+import { getApiKey, getBudget, modelLabel, MODELS } from "@/lib/ai";
 import { q } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,11 @@ export default async function SettingsPage() {
         </p>
       </Section>
 
+      <Section title="Model" hint="Used by the idea chat and choke-point checks. Nothing switches it for you.">
+        <ModelPicker models={[...MODELS]} current={budget.model} />
+        <p className="text-xs text-muted-foreground">You can also switch at the top of any chat. AI tagging and conversation summaries always use Haiku.</p>
+      </Section>
+
       <Section title="AI budget" hint="Resets on the 1st of each month (UTC)">
         <div>
           <div className="flex items-baseline justify-between text-sm">
@@ -58,13 +64,10 @@ export default async function SettingsPage() {
               <span className="text-2xl font-semibold tracking-tight tabular-nums">${budget.remaining.toFixed(2)}</span>
               <span className="text-muted-foreground"> left of ${budget.monthlyBudget.toFixed(0)}</span>
             </span>
-            <span className="text-xs text-muted-foreground">
-              Now using {budget.model.includes("haiku") ? "Haiku 5.5" : "Sonnet 5.5"}
-              {budget.model.includes("haiku") ? "" : `; switches to Haiku 5.5 at $${budget.switchBelow.toFixed(0)} left`}
-            </span>
+            <span className="text-xs text-muted-foreground">Current model: {modelLabel(budget.model)}</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className={`h-full rounded-full ${budget.remaining <= budget.switchBelow ? "bg-amber-500" : "bg-sky-500"}`} style={{ width: `${usedPct}%` }} />
+            <div className={`h-full rounded-full ${usedPct > 75 ? "bg-amber-500" : "bg-sky-500"}`} style={{ width: `${usedPct}%` }} />
           </div>
         </div>
         {byPurpose.length > 0 && (
@@ -83,10 +86,6 @@ export default async function SettingsPage() {
           <label className="grid gap-1 text-xs text-muted-foreground">
             Monthly budget ($)
             <input name="monthlyBudget" type="number" min="0" step="1" defaultValue={budget.monthlyBudget} className={`${field} w-28`} />
-          </label>
-          <label className="grid gap-1 text-xs text-muted-foreground">
-            Switch to Haiku below ($)
-            <input name="switchBelow" type="number" min="0" step="1" defaultValue={budget.switchBelow} className={`${field} w-28`} />
           </label>
           <label className="grid gap-1 text-xs text-muted-foreground">
             Actually left right now ($)

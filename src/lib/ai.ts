@@ -7,13 +7,35 @@ import { kvGet, kvSet, now, q, run } from "./db";
 
 export const SONNET = "claude-sonnet-5-5";
 export const HAIKU = "claude-haiku-5-5";
+export const OPUS = "claude-opus-5-5";
+
+/** The models offered in the dashboard. Prices are USD per million tokens. */
+export const MODELS = [
+  { id: HAIKU, label: "Haiku 5.5", blurb: "Fastest and cheapest", input: 0.1, output: 0.5 },
+  { id: SONNET, label: "Sonnet 5.5", blurb: "Stronger analysis", input: 2, output: 10 },
+  { id: OPUS, label: "Opus 5.5", blurb: "Deepest, most expensive", input: 4, output: 20 },
+] as const;
+export const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id;
+const isModel = (id: string | null | undefined): id is string => !!id && MODELS.some((m) => m.id === id);
 
 // USD per million tokens. Cache writes are billed at 1.25x input.
 const PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
   [SONNET]: { input: 2, output: 10, cacheRead: 0.1 },
   "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2 },
   [HAIKU]: { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  [OPUS]: { input: 4, output: 20, cacheRead: 0.2 },
 };
+
+/** The model you last picked; Haiku until you choose otherwise. Nothing switches it automatically. */
+export async function getChosenModel(): Promise<string> {
+  const saved = await kvGet("ai_model");
+  return isModel(saved) ? saved : HAIKU;
+}
+
+export async function setChosenModel(id: string) {
+  if (!isModel(id)) throw new Error(`Unknown model ${id}`);
+  await kvSet("ai_model", id);
+}
 
 export type AiSettings = { monthlyBudget: number; switchBelow: number; adjustment: number };
 
@@ -59,14 +81,14 @@ export async function getBudget() {
   // `adjustment` lets the user account for credits spent outside this app.
   const spent = Number(rows[0].spent ?? 0) + settings.adjustment;
   const remaining = Math.max(settings.monthlyBudget - spent, 0);
-  return { ...settings, spent, remaining, calls: Number(rows[0].calls), model: remaining <= settings.switchBelow ? HAIKU : SONNET, exhausted: remaining <= 0 };
+  return { ...settings, spent, remaining, calls: Number(rows[0].calls), model: await getChosenModel(), exhausted: remaining <= 0 };
 }
 
-/** Sonnet 5.5 while the month's budget is healthy, Haiku 5.5 once it runs low. */
-export async function pickModel(): Promise<string> {
+/** The requested model if given, otherwise the one chosen in the dashboard. Refuses once the month's budget is spent. */
+export async function pickModel(requested?: string | null): Promise<string> {
   const b = await getBudget();
   if (b.exhausted) throw new Error(`This month's AI budget ($${b.monthlyBudget}) is used up. Raise it or correct the balance in Settings.`);
-  return b.model;
+  return isModel(requested) ? requested : b.model;
 }
 
 type Usage = { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null };

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Sidebar } from "@/components/sidebar";
 import "./globals.css";
 
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-full bg-background font-sans text-foreground">
         <Sidebar />
         <main className="min-w-0 flex-1 px-10 py-7">{children}</main>
+        <AutoRefresh />
         <Toaster />
       </body>
     </html>

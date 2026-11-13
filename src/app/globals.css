@@ -140,7 +140,12 @@
 .prose-chat strong { font-weight: 600; }
 .prose-chat a { text-decoration: underline; text-underline-offset: 3px; }
 .prose-chat code { background: var(--muted); border-radius: 0.3rem; padding: 0.1rem 0.3rem; font-size: 0.85em; }
-.prose-chat table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.prose-chat { overflow-wrap: anywhere; }
+.prose-chat table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 .prose-chat th { text-align: left; font-weight: 500; color: var(--muted-foreground); }
-.prose-chat th, .prose-chat td { padding: 0.35rem 0.9rem 0.35rem 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.prose-chat th, .prose-chat td { padding: 0.35rem 0.9rem 0.35rem 0; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: break-word; }
 .prose-chat blockquote { border-left: 2px solid var(--border); padding-left: 0.75rem; color: var(--muted-foreground); }
+
+/* Thin, dark scrollbars everywhere instead of the bright system ones */
+html { color-scheme: dark; }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent; }

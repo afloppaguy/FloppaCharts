@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { explainAiError, getAiSettings, getBudget, setAiSettings, type AiSettings } from "@/lib/ai";
+import { explainAiError, getAiSettings, getBudget, setAiSettings, setChosenModel, type AiSettings } from "@/lib/ai";
 import { analyzeGame } from "@/lib/analytics";
 import { deleteChat } from "@/lib/chat";
 import { kvSet, now, q, run } from "@/lib/db";
@@ -113,7 +113,7 @@ export async function saveBudget(formData: FormData) {
     return Number.isFinite(v) && v >= 0 ? v : d;
   };
   const budget = n("monthlyBudget", 100);
-  const patch: Partial<AiSettings> = { monthlyBudget: budget, switchBelow: n("switchBelow", 25) };
+  const patch: Partial<AiSettings> = { monthlyBudget: budget };
   // "Left right now" lets the user correct for credits spent outside this app.
   const remaining = String(formData.get("remaining") ?? "").trim();
   if (remaining !== "" && Number.isFinite(Number(remaining))) {
@@ -222,6 +222,11 @@ export async function deleteChatAction(formData: FormData) {
   await deleteChat(Number(formData.get("id")));
   revalidatePath("/ideas");
   redirect("/ideas");
+}
+
+export async function setModelAction(id: string) {
+  await setChosenModel(id);
+  revalidatePath("/settings");
 }
 
 // ---- Compare ----
