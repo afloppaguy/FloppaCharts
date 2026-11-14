@@ -5,6 +5,7 @@ import { BriefingButton } from "@/components/ai-buttons";
 import { currentView, Games } from "@/components/game-table";
 import { RichText } from "@/components/rich-text";
 import { getApiKey } from "@/lib/ai";
+import { runAs, uidNow } from "@/lib/scope";
 import { dailyUpkeep, getBriefing } from "@/lib/insights";
 import { PageHeader, Presets, Section } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
@@ -26,7 +27,8 @@ export default async function HomePage() {
   ]);
   const [briefing, hasAi] = await Promise.all([getBriefing().catch(() => null), getApiKey().then((k) => !!k)]);
   // After the page is sent: write today's briefing and tag new risers if they are due.
-  after(() => dailyUpkeep());
+  const uid = await uidNow();
+  after(() => runAs(uid, () => dailyUpkeep()));
   const historyHours =status.oldestSnapshot ? (now() - status.oldestSnapshot) / 3600 : 0;
 
   return (

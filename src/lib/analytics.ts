@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getClient, pickModel, recordUsage } from "./ai";
 import { nowMs } from "./clock";
 import { now, q, run } from "./db";
+import { uidNow } from "./scope";
 import { decryptSecret } from "./security";
 
 // "My games": analytics for games you own, read from Roblox's Open Cloud
@@ -136,8 +137,8 @@ async function pool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>)
 
 export async function getMyGame(universeId: number) {
   const r = await q<{ universe_id: number; name: string; key_id: number; api_key: string; label: string }>(
-    "SELECT g.universe_id, g.name, g.key_id, k.api_key, k.label FROM my_games g JOIN rbx_keys k ON k.id = g.key_id WHERE g.universe_id = ?",
-    [universeId],
+    "SELECT g.universe_id, g.name, g.key_id, k.api_key, k.label FROM my_games g JOIN rbx_keys k ON k.id = g.key_id WHERE g.universe_id = ? AND g.owner_id = ?",
+    [universeId, await uidNow()],
   );
   return r[0] ? { ...r[0], api_key: decryptSecret(r[0].api_key) } : null;
 }

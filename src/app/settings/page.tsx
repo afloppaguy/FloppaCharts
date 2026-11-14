@@ -21,11 +21,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     getApiKey(),
     getBudget(),
     q<{ purpose: string; calls: number; cost: number }>(
-      "SELECT purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost FROM ai_usage WHERE ts >= CAST(strftime('%s', 'now', 'start of month') AS INTEGER) GROUP BY purpose ORDER BY cost DESC",
+      "SELECT purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost FROM ai_usage WHERE ts >= CAST(strftime('%s', 'now', 'start of month') AS INTEGER) AND user_id = ? GROUP BY purpose ORDER BY cost DESC",
+      [user?.memberId ?? 0],
     ),
     getAutoTag(),
     q<{ id: number; label: string; created_at: number; games: number; names: string | null }>(
-      "SELECT k.id, k.label, k.created_at, COUNT(g.universe_id) AS games, GROUP_CONCAT(g.name, ', ') AS names FROM rbx_keys k LEFT JOIN my_games g ON g.key_id = k.id GROUP BY k.id ORDER BY k.id",
+      "SELECT k.id, k.label, k.created_at, COUNT(g.universe_id) AS games, GROUP_CONCAT(g.name, ', ') AS names FROM rbx_keys k LEFT JOIN my_games g ON g.key_id = k.id WHERE k.owner_id = ? GROUP BY k.id ORDER BY k.id",
+      [user?.memberId ?? 0],
     ),
   ]);
   const usedPct = Math.min(100, (budget.spent / Math.max(budget.monthlyBudget, 0.01)) * 100);
@@ -34,9 +36,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="mx-auto grid max-w-2xl gap-10">
       <PageHeader title="Settings" />
-      {!owner && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">Signed in as {user?.name}. Keys, budget and people can only be changed by the owner.</p>}
+      {!owner && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">Signed in as {user?.name}. The keys, budget and model here are your own; nobody else on this dashboard sees or uses them.</p>}
 
-      <fieldset disabled={!owner} className="contents">
+      <fieldset className="contents">
       <Section title="Claude API key" hint="Powers the idea chat, AI tagging and choke-point checks">
         {key ? (
           <div className="flex items-center gap-3 text-sm">
@@ -81,7 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="text-xs text-muted-foreground">The daily briefing on the Home page is also written automatically, once a day, for about a cent.</p>
       </Section>
 
-      <fieldset disabled={!owner} className="contents">
+      <fieldset className="contents">
       <Section title="AI budget" hint="Resets on the 1st of each month (UTC)">
         <div>
           <div className="flex items-baseline justify-between text-sm">
@@ -126,7 +128,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
       </fieldset>
 
-      <fieldset disabled={!owner} className="contents">
+      <fieldset className="contents">
       <Section title="Roblox API keys" hint="For My games. One key per account or group; a key can cover several games">
         {robloxKeys.length > 0 && (
           <ul className="grid gap-1">
@@ -169,7 +171,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       {owner && (
         <div id="people">
-          <Section title="People" hint="Give someone their own password. They can use everything except keys, budget and this list">
+          <Section title="People" hint="Give someone their own password. They get their own keys, budget, games and idea chats">
             {members.length > 0 && (
               <ul className="grid gap-1">
                 {members.map((m) => (

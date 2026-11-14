@@ -86,3 +86,7 @@ See [DEPLOY.md](DEPLOY.md) for the free 24/7 setup (Turso + GitHub Actions + Ver
 ## People
 
 The owner signs in with `DASH_PASSWORD`. Other people get their own password under **Settings > People** (or `npx tsx scripts/add-member.ts "Name" "password"`). They can use everything except API keys, the AI budget and the People list. Their passwords are stored as salted scrypt hashes; removing a person signs them out within half a minute.
+
+## Several people
+
+Settings → People adds extra sign-ins. Each person has their own Claude key, budget, model choice, Roblox keys, connected games and idea chats; nobody sees or spends anyone else's. Market data, tags, the watchlist, notes, the briefing and the gap finder are shared.

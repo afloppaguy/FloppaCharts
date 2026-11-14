@@ -8,6 +8,7 @@ import { q, run } from "@/lib/db";
 import { num } from "@/lib/format";
 import { iconsFor } from "@/lib/queries";
 import { universeName } from "@/lib/roblox";
+import { uidNow } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +17,15 @@ const field = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm outline-none placeholde
 type Row = { universe_id: number; name: string; label: string; playing: number | null; visits: number | null };
 
 export default async function MyGamesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const uid = await uidNow();
   const [{ error }, games, keys, view] = await Promise.all([
     searchParams,
     q<Row>(
       `SELECT m.universe_id, m.name, k.label, g.playing, g.visits
-       FROM my_games m JOIN rbx_keys k ON k.id = m.key_id LEFT JOIN games g ON g.universe_id = m.universe_id ORDER BY m.added_at DESC`,
+       FROM my_games m JOIN rbx_keys k ON k.id = m.key_id LEFT JOIN games g ON g.universe_id = m.universe_id WHERE m.owner_id = ? ORDER BY m.added_at DESC`,
+      [uid],
     ),
-    q<{ id: number; label: string }>("SELECT id, label FROM rbx_keys ORDER BY id"),
+    q<{ id: number; label: string }>("SELECT id, label FROM rbx_keys WHERE owner_id = ? ORDER BY id", [uid]),
     currentView(),
   ]);
   // Games connected while Roblox was rate-limiting got a placeholder name; look the real one up once.

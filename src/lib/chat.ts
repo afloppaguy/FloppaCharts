@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { explainAiError, getBudget, getClient, HAIKU, modelLabel, OPUS, pickModel, recordUsage, SONNET } from "./ai";
 import { now, q, run } from "./db";
 import { TOOLS } from "./mcp-tools";
+import { uidNow } from "./scope";
 
 // The idea chat: Claude with the dashboard's own tools, so every verdict is
 // checked against live data instead of general knowledge.
@@ -89,7 +90,7 @@ export type ChatEvent =
 export async function createChat(firstMessage: string): Promise<number> {
   const t = now();
   const title = firstMessage.replace(/\s+/g, " ").trim().slice(0, 70) || "New idea";
-  const r = await run("INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)", [title, t, t]);
+  const r = await run("INSERT INTO chats (title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?)", [title, t, t, await uidNow()]);
   return Number(r.lastInsertRowid);
 }
 
@@ -340,16 +341,18 @@ export type ChatRow = { id: number; title: string; grade: string | null; grade_r
 const CHAT_COLS = `c.id, c.title, c.grade, c.grade_reason, c.summary, c.idea_name, c.pitch, c.cost_usd, c.model, c.updated_at,
   (SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id = c.id AND m.role = 'user' AND m.content LIKE '"%') AS messages`;
 
+// Conversations are private to the person who started them.
 export async function listChats() {
-  return q<ChatRow>(`SELECT ${CHAT_COLS} FROM chats c ORDER BY c.updated_at DESC LIMIT 200`);
+  return q<ChatRow>(`SELECT ${CHAT_COLS} FROM chats c WHERE c.user_id = ? ORDER BY c.updated_at DESC LIMIT 200`, [await uidNow()]);
 }
 
 export async function getChat(id: number) {
-  const r = await q<ChatRow>(`SELECT ${CHAT_COLS} FROM chats c WHERE c.id = ?`, [id]);
+  const r = await q<ChatRow>(`SELECT ${CHAT_COLS} FROM chats c WHERE c.id = ? AND c.user_id = ?`, [id, await uidNow()]);
   return r[0] ?? null;
 }
 
 export async function deleteChat(id: number) {
+  if (!(await getChat(id))) return;
   await run("DELETE FROM chat_messages WHERE chat_id = ?", [id]);
   await run("DELETE FROM chats WHERE id = ?", [id]);
 }

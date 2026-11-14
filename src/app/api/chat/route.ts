@@ -1,5 +1,6 @@
 import { getApiKey } from "@/lib/ai";
-import { createChat, runChatTurn, type ChatEvent } from "@/lib/chat";
+import { createChat, getChat, runChatTurn, type ChatEvent } from "@/lib/chat";
+import { runAs, uidNow } from "@/lib/scope";
 import { rateLimit, tooMany } from "@/lib/security";
 
 // Streams one chat turn as newline-delimited JSON events.
@@ -17,11 +18,14 @@ export async function POST(req: Request) {
   if (!(await getApiKey())) {
     return new Response(JSON.stringify({ type: "error", message: "No Claude API key is set. Add one in Settings." }) + "\n", { headers: { "Content-Type": "application/x-ndjson" } });
   }
-  const minute = await rateLimit("chat:minute", 12, 60);
+  const uid = await uidNow();
+  const minute = await rateLimit(`chat:minute:${uid}`, 12, 60);
   if (!minute.ok) return tooMany(minute.retryAfter, "You are sending messages very quickly. Wait a moment.");
-  const day = await rateLimit("chat:day", 300, 86400);
+  const day = await rateLimit(`chat:day:${uid}`, 300, 86400);
   if (!day.ok) return tooMany(day.retryAfter, "Daily message limit reached (300). It resets within a day.");
 
+  // A conversation can only be continued by the person who started it.
+  if (body?.chatId != null && !(await getChat(body.chatId))) return Response.json({ error: "That conversation does not exist." }, { status: 404 });
   const chatId = body?.chatId ?? (await createChat(message));
 
   const encoder = new TextEncoder();
@@ -38,7 +42,8 @@ export async function POST(req: Request) {
         }
       };
       send({ type: "chat", id: chatId });
-      await runChatTurn(chatId, message, send, body?.model);
+      // The reply outlives this request, so it is pinned to the person who asked.
+      await runAs(uid, () => runChatTurn(chatId, message, send, body?.model));
       if (open) controller.close();
     },
   });

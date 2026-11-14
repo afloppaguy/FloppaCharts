@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { explainAiError, getAiSettings, getBudget, setAiSettings, setChosenModel, type AiSettings } from "@/lib/ai";
-import { analyzeGame } from "@/lib/analytics";
+import { analyzeGame, getMyGame } from "@/lib/analytics";
 import { deleteChat } from "@/lib/chat";
 import { findGaps, generateBriefing } from "@/lib/insights";
 import { kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
 import { universeName } from "@/lib/roblox";
 import { encryptSecret, hashPassword, rateLimit, safeEqual, verifyPassword } from "@/lib/security";
+import { scoped, uidNow } from "@/lib/scope";
 import { requireOwner } from "@/lib/session";
 import { forgetMember } from "@/proxy";
 import { tagGames, untaggedRising } from "@/lib/tagging";
@@ -102,20 +103,17 @@ export async function setView(view: "grid" | "list") {
 // ---- Claude key and budget ----
 
 export async function saveClaudeKey(formData: FormData) {
-  await requireOwner();
   const key = String(formData.get("key") ?? "").trim();
-  if (key && key.length <= 400) await kvSet("anthropic_key", encryptSecret(key));
+  if (key && key.length <= 400) await kvSet(scoped("anthropic_key", await uidNow()), encryptSecret(key));
   revalidatePath("/settings");
 }
 
 export async function removeClaudeKey() {
-  await requireOwner();
-  await run("DELETE FROM kv WHERE key = 'anthropic_key'");
+  await run("DELETE FROM kv WHERE key = ?", [scoped("anthropic_key", await uidNow())]);
   revalidatePath("/settings");
 }
 
 export async function saveBudget(formData: FormData) {
-  await requireOwner();
   const n = (k: string, d: number) => {
     const v = Number(formData.get(k));
     return Number.isFinite(v) && v >= 0 ? v : d;
@@ -134,7 +132,7 @@ export async function saveBudget(formData: FormData) {
 
 /** At most 40 AI actions an hour (tagging, checks, gap finder, briefing), on top of the monthly budget. */
 async function aiGate() {
-  const r = await rateLimit("ai-actions", 40, 3600);
+  const r = await rateLimit(`ai-actions:${await uidNow()}`, 40, 3600);
   if (!r.ok) throw new Error(`AI action limit reached (40 an hour). Try again in ${Math.ceil(r.retryAfter / 60)} minutes.`);
 }
 
@@ -175,12 +173,17 @@ export async function connectMyGame(formData: FormData) {
   try {
     if (!ref) throw new Error("Paste the game's Roblox link or ID.");
     if (!apiKey && !existing) throw new Error("Paste an API key, or pick one you already added.");
+    const uid = await uidNow();
     const universeId = await ops.resolveUniverse(ref);
     let keyId = existing;
     if (apiKey) {
-      const r = await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label.slice(0, 60), encryptSecret(apiKey), now()]);
+      const r = await run("INSERT INTO rbx_keys (label, api_key, created_at, owner_id) VALUES (?, ?, ?, ?)", [label.slice(0, 60), encryptSecret(apiKey), now(), uid]);
       keyId = Number(r.lastInsertRowid);
+    } else if (!(await q("SELECT 1 FROM rbx_keys WHERE id = ? AND owner_id = ?", [keyId, uid])).length) {
+      throw new Error("That key is not one of yours. Add it in Settings first.");
     }
+    const taken = await q<{ owner_id: number }>("SELECT owner_id FROM my_games WHERE universe_id = ?", [universeId]);
+    if (taken[0] && Number(taken[0].owner_id) !== uid) throw new Error("Someone else on this dashboard has already connected that game.");
     let name = `Game ${universeId}`;
     try {
       await ops.addGame(String(universeId), "you");
@@ -191,8 +194,8 @@ export async function connectMyGame(formData: FormData) {
     }
     if (/^Game \d+$/.test(name)) name = (await universeName(universeId)) ?? name;
     await run(
-      "INSERT INTO my_games (universe_id, key_id, name, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(universe_id) DO UPDATE SET key_id = excluded.key_id, name = excluded.name",
-      [universeId, keyId, name, now()],
+      "INSERT INTO my_games (universe_id, key_id, name, added_at, owner_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(universe_id) DO UPDATE SET key_id = excluded.key_id, name = excluded.name",
+      [universeId, keyId, name, now(), uid],
     );
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -203,14 +206,15 @@ export async function connectMyGame(formData: FormData) {
 
 export async function removeMyGame(formData: FormData) {
   const id = Number(formData.get("id"));
-  await run("DELETE FROM my_games WHERE universe_id = ?", [id]);
-  await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
+  const gone = await run("DELETE FROM my_games WHERE universe_id = ? AND owner_id = ?", [id, await uidNow()]);
+  if (gone.rowsAffected) await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
   revalidatePath("/my-games");
   redirect("/my-games");
 }
 
 export async function refreshMyGame(formData: FormData) {
   const id = Number(formData.get("id"));
+  if (!(await getMyGame(id))) return; // not one of your games
   await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
   revalidatePath(`/my-games/${id}`);
 }
@@ -229,26 +233,26 @@ export async function runAnalysis(id: number): Promise<Result> {
 export async function dismissFinding(formData: FormData) {
   const id = Number(formData.get("id"));
   const game = Number(formData.get("game"));
-  await run("UPDATE findings SET dismissed = 1 WHERE id = ?", [id]);
+  if (!(await getMyGame(game))) return; // not one of your games
+  await run("UPDATE findings SET dismissed = 1 WHERE id = ? AND universe_id = ?", [id, game]);
   revalidatePath(`/my-games/${game}`);
 }
 
 // ---- Roblox API keys (managed in Settings) ----
 
 export async function addRobloxKey(formData: FormData) {
-  await requireOwner();
   const label = String(formData.get("label") ?? "").trim().slice(0, 60) || "My key";
   const apiKey = String(formData.get("apiKey") ?? "").trim();
-  if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label, encryptSecret(apiKey), now()]);
+  if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at, owner_id) VALUES (?, ?, ?, ?)", [label, encryptSecret(apiKey), now(), await uidNow()]);
   revalidatePath("/settings");
   revalidatePath("/my-games");
 }
 
 /** Deleting a key also disconnects the games that were using it. */
 export async function deleteRobloxKey(formData: FormData) {
-  await requireOwner();
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return;
+  if (!(await q("SELECT 1 FROM rbx_keys WHERE id = ? AND owner_id = ?", [id, await uidNow()])).length) return; // not yours
   const games = await q<{ universe_id: number }>("SELECT universe_id FROM my_games WHERE key_id = ?", [id]);
   for (const g of games) await run("DELETE FROM metric_cache WHERE universe_id = ?", [Number(g.universe_id)]);
   await run("DELETE FROM my_games WHERE key_id = ?", [id]);
@@ -295,7 +299,7 @@ export async function runGapFinder(): Promise<Result> {
 }
 
 export async function setAutoTagAction(on: boolean) {
-  await kvSet("auto_tag", on ? "on" : "off");
+  await kvSet(scoped("auto_tag", await uidNow()), on ? "on" : "off");
   revalidatePath("/settings");
 }
 

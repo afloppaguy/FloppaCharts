@@ -7,6 +7,7 @@ import { kvGet, kvSet, now, q, run } from "./db";
 import { likePct } from "./format";
 import { getNiches, getRisingNiches } from "./niches";
 import { baseline, listGames, type Game } from "./queries";
+import { scoped, uidNow } from "./scope";
 import { tagGames, untaggedRising } from "./tagging";
 
 // AI features that run on the tracked data without anyone asking a question:
@@ -177,7 +178,7 @@ export async function getGaps() {
 // ---- Background upkeep ----
 
 export async function getAutoTag(): Promise<boolean> {
-  return (await kvGet("auto_tag")) !== "off";
+  return (await kvGet(scoped("auto_tag", await uidNow()))) !== "off";
 }
 
 /**

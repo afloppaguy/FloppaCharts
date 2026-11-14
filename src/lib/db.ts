@@ -219,6 +219,11 @@ export function ready(): Promise<void> {
         ["chats", "model TEXT"],
         ["chats", "busy_until INTEGER NOT NULL DEFAULT 0"],
         ["chats", "idea_name TEXT"],
+        // Per-person ownership: 0 is the owner, anything else a member number.
+        ["chats", "user_id INTEGER NOT NULL DEFAULT 0"],
+        ["ai_usage", "user_id INTEGER NOT NULL DEFAULT 0"],
+        ["rbx_keys", "owner_id INTEGER NOT NULL DEFAULT 0"],
+        ["my_games", "owner_id INTEGER NOT NULL DEFAULT 0"],
         ["chats", "pitch TEXT"],
       ];
       for (const [table, col] of added) {

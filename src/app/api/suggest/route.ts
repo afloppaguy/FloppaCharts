@@ -1,6 +1,7 @@
 import { q } from "@/lib/db";
 import { getNiches } from "@/lib/niches";
 import { iconsFor } from "@/lib/queries";
+import { uidNow } from "@/lib/scope";
 import { clientIp, memoryLimit, tooMany } from "@/lib/security";
 
 // Suggestions shown under the search box as you type: matching games (with
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
       [`%${term}%`, `${term}%`],
     ),
     getNiches("keyword"),
-    q<{ id: number; title: string; grade: string | null }>("SELECT id, COALESCE(idea_name, title) AS title, grade FROM chats WHERE title LIKE ? OR idea_name LIKE ? ORDER BY updated_at DESC LIMIT 3", [`%${term}%`, `%${term}%`]),
+    q<{ id: number; title: string; grade: string | null }>("SELECT id, COALESCE(idea_name, title) AS title, grade FROM chats WHERE user_id = ? AND (title LIKE ? OR idea_name LIKE ?) ORDER BY updated_at DESC LIMIT 3", [await uidNow(), `%${term}%`, `%${term}%`]),
   ]);
   const icons = await iconsFor(games.map((g) => Number(g.universe_id)));
   const keywords = niches

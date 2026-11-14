@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { nowMs } from "./clock";
 import { kvGet, kvSet, now, q, run } from "./db";
+import { scoped, uidNow } from "./scope";
 import { decryptSecret, encryptSecret } from "./security";
 
 // Claude access for the dashboard: where the key comes from, which model to
@@ -29,36 +30,41 @@ const PRICES: Record<string, { input: number; output: number; cacheRead: number 
 
 /** The model you last picked; Haiku until you choose otherwise. Nothing switches it automatically. */
 export async function getChosenModel(): Promise<string> {
-  const saved = await kvGet("ai_model");
+  const saved = await kvGet(scoped("ai_model", await uidNow()));
   return isModel(saved) ? saved : HAIKU;
 }
 
 export async function setChosenModel(id: string) {
   if (!isModel(id)) throw new Error(`Unknown model ${id}`);
-  await kvSet("ai_model", id);
+  await kvSet(scoped("ai_model", await uidNow()), id);
 }
 
 export type AiSettings = { monthlyBudget: number; switchBelow: number; adjustment: number };
 
 export async function getAiSettings(): Promise<AiSettings> {
-  const raw = await kvGet("ai_settings");
+  const raw = await kvGet(scoped("ai_settings", await uidNow()));
   const s = raw ? (JSON.parse(raw) as Partial<AiSettings>) : {};
   return { monthlyBudget: s.monthlyBudget ?? 100, switchBelow: s.switchBelow ?? 25, adjustment: s.adjustment ?? 0 };
 }
 
 export async function setAiSettings(patch: Partial<AiSettings>) {
-  await kvSet("ai_settings", JSON.stringify({ ...(await getAiSettings()), ...patch }));
+  await kvSet(scoped("ai_settings", await uidNow()), JSON.stringify({ ...(await getAiSettings()), ...patch }));
 }
 
-/** The key from the environment wins; otherwise the one saved in Settings. */
+/**
+ * This person's Claude key. Everyone saves their own in Settings; the
+ * ANTHROPIC_API_KEY environment variable, if set, belongs to the owner only.
+ */
 export async function getApiKey(): Promise<{ key: string; source: "env" | "settings" } | null> {
-  if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: "env" };
-  const saved = await kvGet("anthropic_key");
+  const uid = await uidNow();
+  if (uid === 0 && process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: "env" };
+  const name = scoped("anthropic_key", uid);
+  const saved = await kvGet(name);
   if (!saved) return null;
   // A key saved before encryption existed is re-saved encrypted the first time it is read.
   if (!saved.startsWith("enc:")) {
     const sealed = encryptSecret(saved);
-    if (sealed !== saved) await kvSet("anthropic_key", sealed).catch(() => {});
+    if (sealed !== saved) await kvSet(name, sealed).catch(() => {});
   }
   return { key: decryptSecret(saved), source: "settings" };
 }
@@ -83,7 +89,7 @@ const monthStart = () => {
 export async function getBudget() {
   const [settings, rows] = await Promise.all([
     getAiSettings(),
-    q<{ spent: number | null; calls: number }>("SELECT SUM(cost_usd) AS spent, COUNT(*) AS calls FROM ai_usage WHERE ts >= ?", [monthStart()]),
+    q<{ spent: number | null; calls: number }>("SELECT SUM(cost_usd) AS spent, COUNT(*) AS calls FROM ai_usage WHERE ts >= ? AND user_id = ?", [monthStart(), await uidNow()]),
   ]);
   // `adjustment` lets the user account for credits spent outside this app.
   const spent = Number(rows[0].spent ?? 0) + settings.adjustment;
@@ -108,7 +114,7 @@ export function costOf(model: string, u: Usage): number {
 export async function recordUsage(purpose: string, model: string, u: Usage): Promise<number> {
   const cost = costOf(model, u);
   const input = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  await run("INSERT INTO ai_usage (ts, purpose, model, input_tokens, output_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?)", [now(), purpose, model, input, u.output_tokens, cost]);
+  await run("INSERT INTO ai_usage (ts, purpose, model, input_tokens, output_tokens, cost_usd, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)", [now(), purpose, model, input, u.output_tokens, cost, await uidNow()]);
   return cost;
 }
 
