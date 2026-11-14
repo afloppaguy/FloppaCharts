@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ChevronRight, X } from "lucide-react";
 import { GamePicker, type PickedGame } from "@/components/game-picker";
-import { CREATOR_SHARE, DEVEX_MINIMUM, DEVEX_RATE, fmtRobux, fmtUsd } from "@/lib/money";
+import type { GameEstimate, Rates } from "@/lib/earnings";
+import { CREATOR_SHARE, DEVEX_MINIMUM, DEVEX_RATE } from "@/lib/money";
 
-const field = "h-9 w-full rounded-lg bg-muted/60 px-3 text-sm tabular-nums outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
 /** Reads "1500", "1,500", "1.5k", "1.3m", "1.2b" (any case; "mil" and "bil" too). */
 const numberOf = (s: string) => {
   const m = s.replace(/[\s,_]/g, "").toLowerCase().match(/^(\d*\.?\d+)(k|m|mil|b|bil)?$/);
@@ -13,21 +15,37 @@ const numberOf = (s: string) => {
   return Number(m[1]) * scale;
 };
 
-function Out({ label, value, sub, strong }: { label: string; value: string; sub?: string; strong?: boolean }) {
-  return (
-    <div className="rounded-xl bg-muted/30 px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-0.5 tabular-nums ${strong ? "text-2xl font-semibold tracking-tight" : "text-lg font-medium"}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
-    </div>
-  );
+type Currency = "usd" | "eur" | "sek";
+const CURRENCIES: { v: Currency; label: string }[] = [
+  { v: "usd", label: "USD" },
+  { v: "eur", label: "EUR" },
+  { v: "sek", label: "SEK" },
+];
+const SHARES = [100, 75, 50, 25];
+const PER_VISIT = [
+  { v: 0.5, label: "Low", help: "Weak monetization" },
+  { v: 1.5, label: "Typical", help: "Working passes and products" },
+  { v: 4, label: "Strong", help: "Built around spending" },
+];
+
+const whole = (n: number) => Math.round(n).toLocaleString("en-US");
+const robuxText = (n: number) => `${whole(n)} R$`;
+function money(usd: number, c: Currency, rates: Rates): string {
+  const v = c === "usd" ? usd : c === "eur" ? usd * rates.eur : usd * rates.sek;
+  const digits = Math.abs(v) < 100 ? 2 : 0;
+  const s = v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return c === "usd" ? `$${s}` : c === "eur" ? `€${s}` : `${s} kr`;
 }
 
-function Pills<T extends string | number>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
+const input = "h-11 w-full rounded-xl bg-muted/60 px-3.5 text-base tabular-nums outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring";
+const small = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm tabular-nums outline-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring";
+const caption = "text-xs font-medium text-muted-foreground";
+
+function Segmented<T extends string | number>({ value, options, onChange, label }: { value: T | null; options: { v: T; label: string; title?: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-muted p-0.5" role="group">
+    <div className="inline-flex items-center gap-0.5 rounded-xl bg-muted p-1" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={String(o.v)} type="button" aria-pressed={o.v === value} onClick={() => onChange(o.v)} className={`rounded-md px-2.5 py-1 text-xs ${o.v === value ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+        <button key={String(o.v)} type="button" title={o.title} aria-pressed={o.v === value} onClick={() => onChange(o.v)} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${o.v === value ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
           {o.label}
         </button>
       ))}
@@ -35,146 +53,206 @@ function Pills<T extends string | number>({ value, options, onChange }: { value:
   );
 }
 
-/** Robux in, real money out. */
-export function RobuxConverter() {
-  const [amount, setAmount] = useState("100000");
-  const [kind, setKind] = useState<"spent" | "earned">("spent");
-  const [rate, setRate] = useState(String(DEVEX_RATE));
-  const [fx, setFx] = useState("");
-  const robux = numberOf(amount);
-  const earned = kind === "spent" ? robux * CREATOR_SHARE : robux;
-  const usd = earned * numberOf(rate);
-  const local = numberOf(fx) > 0 ? usd * numberOf(fx) : null;
-
+function Step({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_auto] sm:items-end">
-        <label className="grid gap-1 text-xs text-muted-foreground">
-          <span className="flex justify-between gap-2">
-            Robux
-            {/[a-z]/i.test(amount) && robux > 0 && <span className="tabular-nums">= {robux.toLocaleString("en-US")}</span>}
-          </span>
-          <input inputMode="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1.5k, 1m, 1.2b" className={field} />
-        </label>
-        <Pills
-          value={kind}
-          onChange={setKind}
-          options={[
-            { v: "spent", label: "Players spent this" },
-            { v: "earned", label: "I already earned this" },
-          ]}
-        />
+    <div className="flex items-center gap-3">
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className={`tabular-nums ${last ? "text-base font-semibold" : "text-sm"}`}>{value}</div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {kind === "spent" && <Out label={`You receive (${Math.round(CREATOR_SHARE * 100)}% after Roblox's cut)`} value={fmtRobux(earned)} />}
-        <Out label="Cashed out through DevEx" value={fmtUsd(usd)} sub={`${numberOf(rate)} USD per Robux`} strong />
-        {local != null && <Out label="In your currency" value={local.toLocaleString("en-US", { maximumFractionDigits: 0 })} sub={`at ${numberOf(fx)} per dollar`} />}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="grid gap-1 text-xs text-muted-foreground">
-          DevEx rate (USD per Robux)
-          <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} className={field} />
-        </label>
-        <label className="grid gap-1 text-xs text-muted-foreground">
-          Your currency per 1 USD (optional)
-          <input inputMode="decimal" value={fx} onChange={(e) => setFx(e.target.value)} placeholder="e.g. 9.5 for SEK" className={field} />
-        </label>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {earned < DEVEX_MINIMUM
-          ? `Below the cash-out minimum: DevEx needs ${DEVEX_MINIMUM.toLocaleString("en-US")} earned Robux (${fmtUsd(DEVEX_MINIMUM * DEVEX_RATE)}).`
-          : `Above the ${DEVEX_MINIMUM.toLocaleString("en-US")} Robux cash-out minimum.`}{" "}
-        Robux earned before 5 September 2025 cash out at the older 0.0035 rate. Taxes and payment fees are not included.
-      </p>
+      {!last && <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />}
     </div>
   );
 }
 
-type Loaded = { id: number; name: string; playing: number; visits: number; visitsPerDay: number | null; basis: string };
-const PER_VISIT = [
-  { v: 0.5, label: "Low", help: "Weak monetization, or mostly young free players" },
-  { v: 1.5, label: "Typical", help: "A game with working game passes and products" },
-  { v: 4, label: "Strong", help: "A game built around spending" },
-];
-
-/** A rough range for what any tracked game earns, from its visits. */
-export function GameEstimate() {
-  const [game, setGame] = useState<Loaded | null>(null);
-  const [error, setError] = useState("");
+export function EarningsCalculator({ rates, initialGames }: { rates: Rates; initialGames: GameEstimate[] }) {
+  const [amount, setAmount] = useState("1m");
+  const [kind, setKind] = useState<"spent" | "earned">("spent");
+  const [share, setShare] = useState("100");
+  const [currency, setCurrency] = useState<Currency>("usd");
+  const [rate, setRate] = useState(String(DEVEX_RATE));
+  const [perVisit, setPerVisit] = useState("1.5");
+  const [games, setGames] = useState(initialGames);
   const [busy, setBusy] = useState(false);
-  const [custom, setCustom] = useState("");
+  const [error, setError] = useState("");
 
-  const load = async (g: PickedGame) => {
+  const robux = numberOf(amount);
+  const sharePct = Math.min(100, numberOf(share));
+  const devex = numberOf(rate);
+  const afterCut = kind === "spent" ? robux * CREATOR_SHARE : robux;
+  const mine = afterCut * (sharePct / 100);
+  const usd = mine * devex;
+  const others = CURRENCIES.filter((c) => c.v !== currency);
+  const rpv = numberOf(perVisit);
+
+  const add = async (g: PickedGame) => {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch(`/api/tools/earnings?id=${g.id}`);
-      const j = (await r.json()) as Loaded & { error?: string };
+      const r = await fetch(`/api/tools/earnings?id=${g.id}`, { method: "POST" });
+      const j = (await r.json()) as GameEstimate & { error?: string };
       if (!r.ok || j.error) throw new Error(j.error ?? "Could not load that game.");
-      setGame(j);
+      setGames((list) => [j, ...list.filter((x) => x.id !== j.id)]);
     } catch (e) {
-      setGame(null);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
-  const rows = numberOf(custom) > 0 ? [...PER_VISIT, { v: numberOf(custom), label: "Yours", help: "Your own figure" }] : PER_VISIT;
+  const remove = (id: number) => {
+    setGames((list) => list.filter((x) => x.id !== id));
+    void fetch(`/api/tools/earnings?id=${id}`, { method: "DELETE" }).catch(() => {});
+  };
 
   return (
-    <div className="grid gap-4">
-      <GamePicker name="game" placeholder="Type a game's name" onPick={load} className="max-w-md" />
-      {busy && <p className="text-sm text-muted-foreground">Loading…</p>}
-      {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
-      {game && (
-        <>
-          <p className="text-sm">
-            <span className="font-medium">{game.name}</span>
-            <span className="text-muted-foreground">
-              {" "}
-              · {game.playing.toLocaleString("en-US")} playing now ·{" "}
-              {game.visitsPerDay != null ? `${game.visitsPerDay.toLocaleString("en-US")} visits a day, ${game.basis}` : "no visit rate measured yet; open it again in a few hours"}
-            </span>
-          </p>
-          {game.visitsPerDay != null && (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[34rem] text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="pb-2 font-normal">Robux earned per visit</th>
-                    <th className="pb-2 text-right font-normal">Robux a day</th>
-                    <th className="pb-2 text-right font-normal">USD a day</th>
-                    <th className="pb-2 text-right font-normal">USD a month</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const day = game.visitsPerDay! * r.v;
-                    return (
-                      <tr key={r.label} className="border-t border-border/60">
-                        <td className="py-2">
-                          <span className="font-medium">{r.label}</span> <span className="text-muted-foreground tabular-nums">{r.v} R$</span>
-                          <span className="block text-xs text-muted-foreground">{r.help}</span>
-                        </td>
-                        <td className="py-2 text-right tabular-nums">{fmtRobux(day)}</td>
-                        <td className="py-2 text-right tabular-nums">{fmtUsd(day * DEVEX_RATE)}</td>
-                        <td className="py-2 text-right font-medium tabular-nums">{fmtUsd(day * DEVEX_RATE * 30)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+    <div className="grid gap-10">
+      {/* Settings that apply to everything on the page */}
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
+        <div className="grid gap-1.5">
+          <span className={caption}>Show money in</span>
+          <Segmented label="Currency" value={currency} onChange={setCurrency} options={CURRENCIES} />
+        </div>
+        <div className="grid gap-1.5">
+          <span className={caption}>Your share of the game</span>
+          <div className="flex items-center gap-2">
+            <Segmented label="Your share" value={SHARES.includes(sharePct) ? sharePct : null} onChange={(v) => setShare(String(v))} options={SHARES.map((s) => ({ v: s, label: `${s}%` }))} />
+            <label className="relative">
+              <input inputMode="decimal" aria-label="Your share in percent" value={share} onChange={(e) => setShare(e.target.value)} className={`${small} h-10 w-20 rounded-xl pr-7`} />
+              <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Robux to money */}
+      <section className="grid gap-4">
+        <h2 className="text-base font-semibold tracking-tight">Robux to money</h2>
+        <div className="grid gap-4 rounded-3xl bg-muted/30 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-8 lg:p-6">
+          <div className="grid content-start gap-4">
+            <label className="grid gap-1.5">
+              <span className={`${caption} flex justify-between gap-2`}>
+                Robux
+                {/[a-z]/i.test(amount) && robux > 0 && <span className="font-normal tabular-nums">= {whole(robux)}</span>}
+              </span>
+              <input inputMode="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1.5k, 1m, 1.2b" className={input} />
+            </label>
+            <Segmented
+              label="What the amount is"
+              value={kind}
+              onChange={setKind}
+              options={[
+                { v: "spent", label: "Players spent this", title: "Roblox keeps 30% of game pass and product sales" },
+                { v: "earned", label: "I already earned this", title: "Robux already in the account, after Roblox's cut" },
+              ]}
+            />
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none hover:text-foreground">DevEx rate: {devex} USD per Robux</summary>
+              <label className="mt-2 grid max-w-40 gap-1">
+                USD per Robux
+                <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} className={small} />
+              </label>
+            </details>
+          </div>
+
+          <div className="grid content-start gap-4">
+            <div>
+              <div className={caption}>{sharePct < 100 ? `Your ${sharePct}% in real money` : "In real money"}</div>
+              <div className="mt-1 text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">{money(usd, currency, rates)}</div>
+              <div className="mt-1.5 flex flex-wrap gap-x-4 text-sm text-muted-foreground tabular-nums">
+                {others.map((c) => (
+                  <span key={c.v}>{money(usd, c.v, rates)}</span>
+                ))}
+              </div>
             </div>
-          )}
-          <label className="grid max-w-xs gap-1 text-xs text-muted-foreground">
-            Your own Robux per visit (optional)
-            <input inputMode="decimal" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Revenue ÷ visits from one of your games" className={field} />
-          </label>
-        </>
-      )}
-      <p className="text-xs text-muted-foreground">
-        This is a rough range, not a measurement. Visits are measured by the tracker; what a visit is worth is not public, so the three rows are assumptions. For a real figure, divide Revenue by Visits on one of your own games in My games and enter it above.
-      </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 pt-4">
+              {kind === "spent" && <Step label="Players spent" value={robuxText(robux)} />}
+              <Step label={kind === "spent" ? "After Roblox's 30%" : "Earned"} value={robuxText(afterCut)} />
+              {sharePct < 100 && <Step label={`Your ${sharePct}%`} value={robuxText(mine)} />}
+              <Step label="Through DevEx" value={money(usd, "usd", rates)} last />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {mine > 0 && mine < DEVEX_MINIMUM ? `Below the cash-out minimum of ${whole(DEVEX_MINIMUM)} earned Robux. ` : ""}
+              Before tax and payment fees.{rates.date ? ` Exchange rates from the European Central Bank, ${rates.date}.` : ""}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Games */}
+      <section className="grid gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight">What do these games earn?</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">A rough range from each game&apos;s visits. Games you add stay on this list.</p>
+          </div>
+          <div className="grid gap-1.5">
+            <span className={caption}>Robux earned per visit</span>
+            <div className="flex items-center gap-2">
+              <Segmented label="Robux earned per visit" value={PER_VISIT.find((p) => p.v === rpv)?.v ?? null} onChange={(v) => setPerVisit(String(v))} options={PER_VISIT.map((p) => ({ v: p.v, label: `${p.label} ${p.v}`, title: p.help }))} />
+              <input inputMode="decimal" aria-label="Robux earned per visit" value={perVisit} onChange={(e) => setPerVisit(e.target.value)} className={`${small} h-10 w-20 rounded-xl`} />
+            </div>
+          </div>
+        </div>
+
+        <GamePicker name="game" placeholder="Add a game: type its name" onPick={add} className="max-w-md" />
+        {busy && <p className="text-sm text-muted-foreground">Adding…</p>}
+        {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+
+        {games.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">No games yet. Add one above to see roughly what it earns.</p>
+        ) : (
+          <div className="grid gap-2">
+            {games.map((g) => {
+              const day = g.visitsPerDay == null ? null : g.visitsPerDay * rpv * (sharePct / 100);
+              return (
+                <div key={g.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 rounded-2xl bg-muted/30 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_repeat(3,minmax(6.5rem,auto))_auto]">
+                  {g.icon ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={g.icon} alt="" className="size-12 rounded-xl bg-muted object-cover" />
+                  ) : (
+                    <span className="size-12 rounded-xl bg-muted" />
+                  )}
+                  <div className="min-w-0">
+                    <Link href={`/games/${g.id}`} className="block truncate text-sm font-medium hover:underline">
+                      {g.name}
+                    </Link>
+                    <div className="truncate text-xs text-muted-foreground" title={g.basis}>
+                      {whole(g.playing)} playing · {g.visitsPerDay != null ? `${whole(g.visitsPerDay)} visits a day` : "visits not measured yet"}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => remove(g.id)} aria-label={`Remove ${g.name}`} className="inline-flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground sm:order-last">
+                    <X className="size-4" />
+                  </button>
+                  {day == null ? (
+                    <p className="col-span-3 text-xs text-muted-foreground">The tracker needs a few hours of readings before it can measure this game&apos;s visits. Check back later.</p>
+                  ) : (
+                    <>
+                      <div className="col-span-3 grid grid-cols-3 gap-x-4 sm:contents">
+                        <div className="sm:text-right">
+                          <div className="text-xs text-muted-foreground">Robux a day</div>
+                          <div className="text-sm tabular-nums">{robuxText(day)}</div>
+                        </div>
+                        <div className="sm:text-right">
+                          <div className="text-xs text-muted-foreground">A day</div>
+                          <div className="text-sm tabular-nums">{money(day * devex, currency, rates)}</div>
+                        </div>
+                        <div className="sm:text-right">
+                          <div className="text-xs text-muted-foreground">A month</div>
+                          <div className="text-base font-semibold tabular-nums">{money(day * devex * 30, currency, rates)}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Visits are measured by the tracker. What a visit is worth is not public, so Low, Typical and Strong are assumptions, not measurements; for a real figure, divide Revenue by Visits on one of your own games in My games and type it in.
+          {sharePct < 100 ? ` Amounts show your ${sharePct}% share.` : ""}
+        </p>
+      </section>
     </div>
   );
 }
