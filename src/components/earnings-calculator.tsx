@@ -5,9 +5,12 @@ import { GamePicker, type PickedGame } from "@/components/game-picker";
 import { CREATOR_SHARE, DEVEX_MINIMUM, DEVEX_RATE, fmtRobux, fmtUsd } from "@/lib/money";
 
 const field = "h-9 w-full rounded-lg bg-muted/60 px-3 text-sm tabular-nums outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
+/** Reads "1500", "1,500", "1.5k", "1.3m", "1.2b" (any case; "mil" and "bil" too). */
 const numberOf = (s: string) => {
-  const n = Number(s.replace(/[\s,]/g, ""));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+  const m = s.replace(/[\s,_]/g, "").toLowerCase().match(/^(\d*\.?\d+)(k|m|mil|b|bil)?$/);
+  if (!m) return 0;
+  const scale = !m[2] ? 1 : m[2] === "k" ? 1e3 : m[2].startsWith("m") ? 1e6 : 1e9;
+  return Number(m[1]) * scale;
 };
 
 function Out({ label, value, sub, strong }: { label: string; value: string; sub?: string; strong?: boolean }) {
@@ -47,8 +50,11 @@ export function RobuxConverter() {
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_auto] sm:items-end">
         <label className="grid gap-1 text-xs text-muted-foreground">
-          Robux
-          <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} />
+          <span className="flex justify-between gap-2">
+            Robux
+            {/[a-z]/i.test(amount) && robux > 0 && <span className="tabular-nums">= {robux.toLocaleString("en-US")}</span>}
+          </span>
+          <input inputMode="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1.5k, 1m, 1.2b" className={field} />
         </label>
         <Pills
           value={kind}
