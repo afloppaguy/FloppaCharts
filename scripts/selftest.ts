@@ -45,3 +45,19 @@ import { createSession, validSession } from "../src/proxy";
   console.assert((await validSession("pw", s.value)) && !(await validSession("other", s.value)) && !(await validSession("pw", `${Number(exp) + 99}.${sig}`)) && !(await validSession("pw", `1.${sig}`)) && !(await validSession("pw", undefined)), "session signing");
   console.log("security ok");
 })();
+
+// Passwords for additional people, and their session format.
+import { hashPassword, verifyPassword } from "../src/lib/security";
+import { readSession } from "../src/proxy";
+(async () => {
+  const h = hashPassword("correct horse");
+  console.assert(h.startsWith("scrypt:") && verifyPassword("correct horse", h) && !verifyPassword("wrong", h) && hashPassword("correct horse") !== h, "password hashing");
+  const owner = await createSession("pw");
+  const member = await createSession("pw", 7);
+  const o = await readSession("pw", owner.value);
+  const m = await readSession("pw", member.value);
+  // A member token must not be promotable to another member or to the owner.
+  const [, exp, sig] = member.value.split(".");
+  console.assert(o?.owner === true && m?.owner === false && m?.memberId === 7 && !(await readSession("pw", `m8.${exp}.${sig}`)) && !(await readSession("pw", `${exp}.${sig}`)) && !(await readSession("other", member.value)), "member sessions");
+  console.log("members ok");
+})();

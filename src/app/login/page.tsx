@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { Cat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { clientIp, rateCount, rateLimit, rateReset, safeEqual } from "@/lib/security";
+import { now, q, run } from "@/lib/db";
+import { clientIp, rateCount, rateLimit, rateReset, safeEqual, verifyPassword } from "@/lib/security";
 import { createSession } from "@/proxy";
 
 // Sign-in limits: 5 wrong passwords per address in 15 minutes, and 30 wrong
@@ -28,6 +29,19 @@ async function login(formData: FormData) {
     const session = await createSession(password);
     (await cookies()).set("radar_session", session.value, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: session.maxAge, path: "/" });
     redirect("/");
+  }
+
+  // Not the owner's password: is it one of the other people's?
+  if (given.length >= 1 && given.length <= 200) {
+    const members = await q<{ id: number; pass_hash: string }>("SELECT id, pass_hash FROM members");
+    const match = members.find((m) => verifyPassword(given, m.pass_hash));
+    if (match) {
+      await rateReset(ipKey);
+      await run("UPDATE members SET last_login = ? WHERE id = ?", [now(), Number(match.id)]);
+      const session = await createSession(password, Number(match.id));
+      (await cookies()).set("radar_session", session.value, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: session.maxAge, path: "/" });
+      redirect("/");
+    }
   }
 
   // Wrong password: count it, and make guessing slow.

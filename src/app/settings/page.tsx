@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { addRobloxKey, deleteRobloxKey, logoutAction, removeClaudeKey, saveBudget, saveClaudeKey } from "@/app/actions";
+import { addMember, addRobloxKey, deleteRobloxKey, logoutAction, removeClaudeKey, removeMember, saveBudget, saveClaudeKey } from "@/app/actions";
+import { currentUser } from "@/lib/session";
 import { ago } from "@/lib/format";
 import { PageHeader, Section } from "@/components/page-parts";
 import { AutoTagToggle, ModelPicker } from "@/components/ai-buttons";
@@ -12,7 +13,10 @@ export const dynamic = "force-dynamic";
 const field = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
 const mask = (k: string) => `${k.slice(0, 10)}…${k.slice(-4)}`;
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const [{ error }, user] = await Promise.all([searchParams, currentUser()]);
+  const owner = !!user?.owner;
+  const members = owner ? await q<{ id: number; name: string; created_at: number; last_login: number | null }>("SELECT id, name, created_at, last_login FROM members ORDER BY id") : [];
   const [key, budget, byPurpose, autoTag, robloxKeys] = await Promise.all([
     getApiKey(),
     getBudget(),
@@ -30,7 +34,9 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto grid max-w-2xl gap-10">
       <PageHeader title="Settings" />
+      {!owner && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">Signed in as {user?.name}. Keys, budget and people can only be changed by the owner.</p>}
 
+      <fieldset disabled={!owner} className="contents">
       <Section title="Claude API key" hint="Powers the idea chat, AI tagging and choke-point checks">
         {key ? (
           <div className="flex items-center gap-3 text-sm">
@@ -57,6 +63,7 @@ export default async function SettingsPage() {
           Create a key at console.anthropic.com. When the dashboard is hosted, set it as the ANTHROPIC_API_KEY environment variable instead of saving it here.
         </p>
       </Section>
+      </fieldset>
 
       <Section title="Model" hint="Used by the idea chat and choke-point checks. Nothing switches it for you.">
         <ModelPicker models={[...MODELS]} current={budget.model} />
@@ -74,6 +81,7 @@ export default async function SettingsPage() {
         <p className="text-xs text-muted-foreground">The daily briefing on the Home page is also written automatically, once a day, for about a cent.</p>
       </Section>
 
+      <fieldset disabled={!owner} className="contents">
       <Section title="AI budget" hint="Resets on the 1st of each month (UTC)">
         <div>
           <div className="flex items-baseline justify-between text-sm">
@@ -116,7 +124,9 @@ export default async function SettingsPage() {
           The dashboard only counts what it spends itself. If you use the same credits elsewhere, enter what is really left and it will correct its count.
         </p>
       </Section>
+      </fieldset>
 
+      <fieldset disabled={!owner} className="contents">
       <Section title="Roblox API keys" hint="For My games. One key per account or group; a key can cover several games">
         {robloxKeys.length > 0 && (
           <ul className="grid gap-1">
@@ -155,6 +165,52 @@ export default async function SettingsPage() {
           Create keys on create.roblox.com under Open Cloud, API Keys. Give each one only the <span className="text-foreground">universe.analytics:read</span> permission for the games it should cover. Keys are stored encrypted.
         </p>
       </Section>
+      </fieldset>
+
+      {owner && (
+        <div id="people">
+          <Section title="People" hint="Give someone their own password. They can use everything except keys, budget and this list">
+            {members.length > 0 && (
+              <ul className="grid gap-1">
+                {members.map((m) => (
+                  <li key={m.id} className="flex items-center gap-3 rounded-xl bg-muted/30 px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">{m.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Added {ago(m.created_at)} · {m.last_login ? `last signed in ${ago(m.last_login)}` : "has not signed in yet"}
+                      </div>
+                    </div>
+                    <form action={removeMember}>
+                      <input type="hidden" name="id" value={m.id} />
+                      <Button type="submit" variant="ghost" size="sm" title="Removes their password and signs them out everywhere">
+                        Remove
+                      </Button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+            <form action={addMember} className="flex flex-wrap items-end gap-2">
+              <label className="grid gap-1 text-xs text-muted-foreground">
+                Name
+                <input name="name" required maxLength={40} placeholder="Who is it for" className={`${field} w-44`} />
+              </label>
+              <label className="grid flex-1 gap-1 text-xs text-muted-foreground">
+                Their password (8+ characters)
+                <input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={200} className={`${field} w-full min-w-48`} />
+              </label>
+              <Button type="submit" size="sm">
+                Add person
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">
+              They sign in on the same page as you, with their password. Passwords are stored as one-way hashes and cannot be read back; to change one, remove the person and add them again.
+            </p>
+          </Section>
+        </div>
+      )}
+
 
       <Section title="Security" hint="How this dashboard is protected">
         <ul className="grid gap-1.5 text-sm text-muted-foreground">

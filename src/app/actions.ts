@@ -10,7 +10,9 @@ import { findGaps, generateBriefing } from "@/lib/insights";
 import { kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
 import { universeName } from "@/lib/roblox";
-import { encryptSecret, rateLimit } from "@/lib/security";
+import { encryptSecret, hashPassword, rateLimit, safeEqual, verifyPassword } from "@/lib/security";
+import { requireOwner } from "@/lib/session";
+import { forgetMember } from "@/proxy";
 import { tagGames, untaggedRising } from "@/lib/tagging";
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
@@ -100,17 +102,20 @@ export async function setView(view: "grid" | "list") {
 // ---- Claude key and budget ----
 
 export async function saveClaudeKey(formData: FormData) {
+  await requireOwner();
   const key = String(formData.get("key") ?? "").trim();
   if (key && key.length <= 400) await kvSet("anthropic_key", encryptSecret(key));
   revalidatePath("/settings");
 }
 
 export async function removeClaudeKey() {
+  await requireOwner();
   await run("DELETE FROM kv WHERE key = 'anthropic_key'");
   revalidatePath("/settings");
 }
 
 export async function saveBudget(formData: FormData) {
+  await requireOwner();
   const n = (k: string, d: number) => {
     const v = Number(formData.get(k));
     return Number.isFinite(v) && v >= 0 ? v : d;
@@ -231,6 +236,7 @@ export async function dismissFinding(formData: FormData) {
 // ---- Roblox API keys (managed in Settings) ----
 
 export async function addRobloxKey(formData: FormData) {
+  await requireOwner();
   const label = String(formData.get("label") ?? "").trim().slice(0, 60) || "My key";
   const apiKey = String(formData.get("apiKey") ?? "").trim();
   if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at) VALUES (?, ?, ?)", [label, encryptSecret(apiKey), now()]);
@@ -240,6 +246,7 @@ export async function addRobloxKey(formData: FormData) {
 
 /** Deleting a key also disconnects the games that were using it. */
 export async function deleteRobloxKey(formData: FormData) {
+  await requireOwner();
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return;
   const games = await q<{ universe_id: number }>("SELECT universe_id FROM my_games WHERE key_id = ?", [id]);
@@ -289,6 +296,37 @@ export async function runGapFinder(): Promise<Result> {
 
 export async function setAutoTagAction(on: boolean) {
   await kvSet("auto_tag", on ? "on" : "off");
+  revalidatePath("/settings");
+}
+
+// ---- People (owner only) ----
+
+export async function addMember(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim().slice(0, 40);
+  const password = String(formData.get("password") ?? "");
+  let error = "";
+  try {
+    await requireOwner();
+    if (!name) throw new Error("Give the person a name.");
+    if (password.length < 8 || password.length > 200) throw new Error("The password needs at least 8 characters.");
+    if (process.env.DASH_PASSWORD && safeEqual(password, process.env.DASH_PASSWORD)) throw new Error("That is your own password. Give them a different one.");
+    const members = await q<{ pass_hash: string }>("SELECT pass_hash FROM members");
+    if (members.some((m) => verifyPassword(password, m.pass_hash))) throw new Error("Someone already has that password. Each person needs their own.");
+    await run("INSERT INTO members (name, pass_hash, created_at) VALUES (?, ?, ?)", [name, hashPassword(password), now()]);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  revalidatePath("/settings");
+  redirect(error ? `/settings?error=${encodeURIComponent(error)}#people` : "/settings#people");
+}
+
+/** Removing a person signs them out everywhere within half a minute. */
+export async function removeMember(formData: FormData) {
+  await requireOwner();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return;
+  await run("DELETE FROM members WHERE id = ?", [id]);
+  forgetMember(id);
   revalidatePath("/settings");
 }
 

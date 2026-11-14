@@ -157,6 +157,13 @@ const SCHEMA = [
     confidence TEXT,
     dismissed INTEGER NOT NULL DEFAULT 0
   )`,
+  `CREATE TABLE IF NOT EXISTS members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    pass_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_login INTEGER
+  )`,
   `CREATE TABLE IF NOT EXISTS rate_limits (
     key TEXT PRIMARY KEY,
     window_start INTEGER NOT NULL,

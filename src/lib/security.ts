@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { now, q, run } from "./db";
 
 // Rate limiting and secret handling for the dashboard's server side.
@@ -109,4 +109,23 @@ const SECRET_TABLES = /\b(kv|rbx_keys|rate_limits|sqlite_master|sqlite_schema|sq
 export function assertSafeQuery(sql: string) {
   if (SECRET_TABLES.test(sql)) throw new Error("That table is off limits: it holds keys or security settings. Query games, snapshots, tags, notes, watchlist, presets, alerts or edit_log.");
   if (/\bpragma\b|\battach\b|\bload_extension\b/i.test(sql)) throw new Error("That statement is not allowed.");
+}
+
+// ---- Passwords for additional people ----
+//
+// The owner signs in with DASH_PASSWORD. Anyone else gets their own password,
+// stored only as a salted scrypt hash, so it can be removed without touching
+// the owner's and is never readable from the database.
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  return `scrypt:${salt.toString("hex")}:${scryptSync(password, salt, 32).toString("hex")}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const [scheme, saltHex, hashHex] = stored.split(":");
+  if (scheme !== "scrypt" || !saltHex || !hashHex) return false;
+  const expected = Buffer.from(hashHex, "hex");
+  const actual = scryptSync(password, Buffer.from(saltHex, "hex"), expected.length);
+  return timingSafeEqual(actual, expected);
 }

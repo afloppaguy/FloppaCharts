@@ -82,3 +82,7 @@ See [DEPLOY.md](DEPLOY.md) for the free 24/7 setup (Turso + GitHub Actions + Ver
 - **Limits**: 12 chat messages a minute and 300 a day; 40 other AI actions an hour; search suggestions and game cards are throttled per address. All of this sits on top of the monthly AI budget.
 - **Saved keys**: the Claude key and Roblox keys saved in the dashboard are encrypted (AES-256-GCM) with a key derived from `SECRETS_KEY`, or else from `TURSO_AUTH_TOKEN`. If that value changes, saved keys must be entered again. AI SQL queries cannot read the tables that hold keys or security state.
 - **Browser**: a content security policy limits what pages may load (this site plus Roblox's image servers), the site cannot be framed, requests that change data must come from the site itself, and search engines are told not to index it.
+
+## People
+
+The owner signs in with `DASH_PASSWORD`. Other people get their own password under **Settings > People** (or `npx tsx scripts/add-member.ts "Name" "password"`). They can use everything except API keys, the AI budget and the People list. Their passwords are stored as salted scrypt hashes; removing a person signs them out within half a minute.

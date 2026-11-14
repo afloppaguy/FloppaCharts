@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { q } from "@/lib/db";
 
 // Gate in front of every page and API route.
 //
@@ -9,36 +10,70 @@ import type { NextRequest } from "next/server";
 //   - On a home PC with no DASH_PASSWORD, the dashboard is open.
 //   - /api/mcp is exempt here because it checks its own token.
 //   - Requests that change something must come from this site itself.
+//
+// Two kinds of session: the owner's (signed in with DASH_PASSWORD) and a
+// member's (their own password, added in Settings). A member's session stops
+// working as soon as the member is removed.
 
 const SESSION_DAYS = 30;
 const enc = new TextEncoder();
 const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 async function sign(password: string, payload: string): Promise<string> {
-  // The signing key comes from the password (plus SESSION_SECRET if set), so
-  // changing either one signs everyone out.
+  // The signing key comes from the owner's password (plus SESSION_SECRET if
+  // set), so changing either one signs everyone out.
   const material = await crypto.subtle.digest("SHA-256", enc.encode(`floppa-session:${password}:${process.env.SESSION_SECRET ?? ""}`));
   const key = await crypto.subtle.importKey("raw", material, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return hex(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
 }
 
-/** A session cookie value: an expiry time and a signature over it. It contains nothing secret. */
-export async function createSession(password: string): Promise<{ value: string; maxAge: number }> {
+/** A session cookie value: who (owner, or member number), an expiry time, and a signature. Nothing secret. */
+export async function createSession(password: string, memberId?: number): Promise<{ value: string; maxAge: number }> {
   const maxAge = SESSION_DAYS * 86400;
   const expires = String(Math.floor(Date.now() / 1000) + maxAge);
-  return { value: `${expires}.${await sign(password, expires)}`, maxAge };
+  const payload = memberId ? `m${memberId}.${expires}` : expires;
+  return { value: `${payload}.${await sign(password, payload)}`, maxAge };
 }
 
-export async function validSession(password: string, cookie: string | undefined): Promise<boolean> {
-  if (!cookie) return false;
-  const [expires, signature] = cookie.split(".");
-  if (!expires || !signature || !/^\d+$/.test(expires)) return false;
-  if (Number(expires) < Date.now() / 1000) return false;
-  const expected = await sign(password, expires);
-  if (expected.length !== signature.length) return false;
+export type Session = { owner: true; memberId: null } | { owner: false; memberId: number };
+
+/** Checks the signature and expiry only. A member's session must also pass memberExists(). */
+export async function readSession(password: string, cookie: string | undefined): Promise<Session | null> {
+  if (!cookie) return null;
+  const parts = cookie.split(".");
+  const signature = parts.pop() ?? "";
+  const payload = parts.join(".");
+  const member = parts.length === 2 && /^m\d+$/.test(parts[0]) ? Number(parts[0].slice(1)) : null;
+  const expires = parts[parts.length - 1];
+  if ((parts.length !== 1 && member == null) || !expires || !/^\d+$/.test(expires)) return null;
+  if (Number(expires) < Date.now() / 1000) return null;
+  const expected = await sign(password, payload);
+  if (expected.length !== signature.length) return null;
   let diff = 0;
   for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  return diff === 0;
+  if (diff !== 0) return null;
+  return member == null ? { owner: true, memberId: null } : { owner: false, memberId: member };
+}
+
+// Remembered for half a minute so a member's requests do not each cost a database lookup.
+const memberCache = new Map<number, { ok: boolean; at: number }>();
+export async function memberExists(id: number): Promise<boolean> {
+  const hit = memberCache.get(id);
+  if (hit && Date.now() - hit.at < 30_000) return hit.ok;
+  let ok = false;
+  try {
+    ok = (await q("SELECT 1 FROM members WHERE id = ?", [id])).length > 0;
+  } catch {
+    return hit?.ok ?? false; // database unreachable: keep the last known answer, otherwise refuse
+  }
+  memberCache.set(id, { ok, at: Date.now() });
+  return ok;
+}
+export const forgetMember = (id: number) => memberCache.delete(id);
+
+export async function validSession(password: string, cookie: string | undefined): Promise<boolean> {
+  const s = await readSession(password, cookie);
+  return !!s && (s.owner || (await memberExists(s.memberId)));
 }
 
 export async function proxy(request: NextRequest) {
