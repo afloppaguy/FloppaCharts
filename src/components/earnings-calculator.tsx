@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, X } from "lucide-react";
 import { GamePicker, type PickedGame } from "@/components/game-picker";
 import type { GameEstimate, Rates } from "@/lib/earnings";
-import { CREATOR_SHARE, DEVEX_MINIMUM, DEVEX_RATE } from "@/lib/money";
+import { DEVEX_MINIMUM, DEVEX_RATE } from "@/lib/money";
 
 /** Reads "1500", "1,500", "1.5k", "1.3m", "1.2b" (any case; "mil" and "bil" too). */
 const numberOf = (s: string) => {
@@ -67,7 +67,6 @@ function Step({ label, value, last }: { label: string; value: string; last?: boo
 
 export function EarningsCalculator({ rates, initialGames }: { rates: Rates; initialGames: GameEstimate[] }) {
   const [amount, setAmount] = useState("1m");
-  const [kind, setKind] = useState<"spent" | "earned">("spent");
   const [share, setShare] = useState("100");
   const [currency, setCurrency] = useState<Currency>("usd");
   const [rate, setRate] = useState(String(DEVEX_RATE));
@@ -79,8 +78,7 @@ export function EarningsCalculator({ rates, initialGames }: { rates: Rates; init
   const robux = numberOf(amount);
   const sharePct = Math.min(100, numberOf(share));
   const devex = numberOf(rate);
-  const afterCut = kind === "spent" ? robux * CREATOR_SHARE : robux;
-  const mine = afterCut * (sharePct / 100);
+  const mine = robux * (sharePct / 100);
   const usd = mine * devex;
   const others = CURRENCIES.filter((c) => c.v !== currency);
   const rpv = numberOf(perVisit);
@@ -136,15 +134,7 @@ export function EarningsCalculator({ rates, initialGames }: { rates: Rates; init
               </span>
               <input inputMode="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1.5k, 1m, 1.2b" className={input} />
             </label>
-            <Segmented
-              label="What the amount is"
-              value={kind}
-              onChange={setKind}
-              options={[
-                { v: "spent", label: "Players spent this", title: "Roblox keeps 30% of game pass and product sales" },
-                { v: "earned", label: "I already earned this", title: "Robux already in the account, after Roblox's cut" },
-              ]}
-            />
+            <p className="text-xs text-muted-foreground">Robux the game has earned, after Roblox&apos;s cut.</p>
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer select-none hover:text-foreground">DevEx rate: {devex} USD per Robux</summary>
               <label className="mt-2 grid max-w-40 gap-1">
@@ -165,8 +155,7 @@ export function EarningsCalculator({ rates, initialGames }: { rates: Rates; init
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/60 pt-4">
-              {kind === "spent" && <Step label="Players spent" value={robuxText(robux)} />}
-              <Step label={kind === "spent" ? "After Roblox's 30%" : "Earned"} value={robuxText(afterCut)} />
+              <Step label="Earned" value={robuxText(robux)} />
               {sharePct < 100 && <Step label={`Your ${sharePct}%`} value={robuxText(mine)} />}
               <Step label="Through DevEx" value={money(usd, "usd", rates)} last />
             </div>
