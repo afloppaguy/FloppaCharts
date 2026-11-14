@@ -5,7 +5,8 @@ import { currentView, GameIcon } from "@/components/game-table";
 import { PageHeader } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
 import { num } from "@/lib/format";
-import { getNiches, keywordStats, nicheHref, type Niche, type NicheKind } from "@/lib/niches";
+import { getNicheTrends, type NicheTrend } from "@/lib/niche-history";
+import { getNiches, keywordStats, nichePage, type Niche, type NicheKind } from "@/lib/niches";
 import { iconsFor } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -19,11 +20,13 @@ const KINDS: { kind: NicheKind; label: string; blurb: string }[] = [
 const growthText = (g: number | null) => (g == null ? "–" : `${g > 0 ? "+" : g < 0 ? "−" : ""}${Math.abs(g)}%`);
 const growthColor = (g: number | null) => (g == null ? "text-muted-foreground/60" : g > 0 ? "text-emerald-400" : g < 0 ? "text-rose-400" : "text-muted-foreground");
 
-function NicheList({ niches }: { niches: Niche[] }) {
-  const cols = "grid-cols-[minmax(0,14rem)_4rem_6.5rem_4rem_5rem_5.5rem_minmax(0,1fr)]";
+type Trends = Map<string, NicheTrend>;
+
+function NicheList({ niches, trends }: { niches: Niche[]; trends: Trends }) {
+  const cols = "grid-cols-[minmax(0,14rem)_4rem_6.5rem_4rem_5rem_5.5rem_5.5rem_5.5rem_minmax(0,1fr)]";
   const head = "text-right text-xs text-muted-foreground";
   return (
-    <div role="table" className="min-w-[46rem] text-sm">
+    <div role="table" className="min-w-[58rem] text-sm">
       <div role="row" className={`grid items-center gap-x-4 px-2 pb-2 ${cols}`}>
         <span role="columnheader" className="text-xs text-muted-foreground">
           Niche
@@ -43,6 +46,12 @@ function NicheList({ niches }: { niches: Niche[] }) {
         <span role="columnheader" className={head} title="Median player growth across the group's games">
           Typical growth
         </span>
+        <span role="columnheader" className={head} title="The group's total players against the same hour yesterday">
+          Vs yesterday
+        </span>
+        <span role="columnheader" className={head} title="The group's players over the last 24 hours against the same 24 hours a week ago">
+          Vs last week
+        </span>
         <span role="columnheader" className="text-xs text-muted-foreground">
           Biggest games
         </span>
@@ -50,7 +59,7 @@ function NicheList({ niches }: { niches: Niche[] }) {
       {niches.map((n) => (
         <div key={n.term} role="row" className={`group relative grid items-center gap-x-4 rounded-lg px-2 py-2 hover:bg-muted/50 ${cols}`}>
           <span className="flex min-w-0 items-center gap-2">
-            <Link href={nicheHref(n)} className="truncate font-medium capitalize outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-ring">
+            <Link href={nichePage(n)} className="truncate font-medium capitalize outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-ring">
               {n.term}
             </Link>
             {n.oneHit && (
@@ -67,6 +76,8 @@ function NicheList({ niches }: { niches: Niche[] }) {
           <span className="text-right tabular-nums text-muted-foreground">{n.fresh || "–"}</span>
           <span className="text-right tabular-nums">{num(n.players)}</span>
           <span className={`text-right tabular-nums ${growthColor(n.medianGrowth)}`}>{growthText(n.medianGrowth)}</span>
+          <span className={`text-right tabular-nums ${growthColor(trends.get(n.term)?.day ?? null)}`}>{growthText(trends.get(n.term)?.day ?? null)}</span>
+          <span className={`text-right tabular-nums ${growthColor(trends.get(n.term)?.week ?? null)}`}>{growthText(trends.get(n.term)?.week ?? null)}</span>
           <span className="relative z-10 truncate text-xs text-muted-foreground">
             {n.top.map((g, i) => (
               <span key={g.universe_id}>
@@ -83,12 +94,12 @@ function NicheList({ niches }: { niches: Niche[] }) {
   );
 }
 
-async function NicheGrid({ niches }: { niches: Niche[] }) {
+async function NicheGrid({ niches, trends }: { niches: Niche[]; trends: Trends }) {
   const icons = await iconsFor(niches.flatMap((n) => n.top.map((g) => g.universe_id)));
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-4">
       {niches.map((n) => (
-        <Link key={n.term} href={nicheHref(n)} className="group rounded-2xl bg-muted/30 p-3 transition-colors outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring">
+        <Link key={n.term} href={nichePage(n)} className="group rounded-2xl bg-muted/30 p-3 transition-colors outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring">
           <div className="grid grid-cols-4 gap-1.5">
             {Array.from({ length: 4 }, (_, i) => (
               <GameIcon key={i} url={n.top[i] ? icons.get(n.top[i].universe_id) : undefined} className={`aspect-square w-full rounded-lg ${n.top[i] ? "" : "opacity-30"}`} />
@@ -107,6 +118,11 @@ async function NicheGrid({ niches }: { niches: Niche[] }) {
           <div className="mt-0.5 text-xs text-muted-foreground">
             {num(n.players)} players{n.fresh ? ` · ${n.fresh} new` : ""}
           </div>
+          {trends.get(n.term)?.day != null && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              <span className={growthColor(trends.get(n.term)!.day)}>{growthText(trends.get(n.term)!.day)}</span> players vs yesterday
+            </div>
+          )}
         </Link>
       ))}
     </div>
@@ -117,7 +133,11 @@ export default async function NichesPage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const kw = (sp.kw ?? "").trim();
   const active = KINDS.find((k) => k.kind === sp.kind) ?? KINDS[0];
-  const [niches, view] = await Promise.all([kw ? keywordStats(kw) : getNiches(active.kind).then((n) => n.slice(0, 120)), currentView()]);
+  const [niches, view, trends] = await Promise.all([
+    kw ? keywordStats(kw) : getNiches(active.kind).then((n) => n.slice(0, 120)),
+    currentView(),
+    getNicheTrends(kw ? "keyword" : active.kind).catch(() => new Map() as Trends),
+  ]);
   const pill = "rounded-full px-3 py-1 text-xs transition-colors";
 
   return (
@@ -165,10 +185,10 @@ export default async function NichesPage({ searchParams }: { searchParams: Promi
           {kw ? "Type at least two letters." : active.kind === "tag" ? "No tagged games yet. Tag rising games with AI, or add tags on a game's page." : "Not enough games collected yet."}
         </p>
       ) : view === "grid" ? (
-        <NicheGrid niches={niches} />
+        <NicheGrid niches={niches} trends={trends} />
       ) : (
         <div className="overflow-x-auto">
-          <NicheList niches={niches} />
+          <NicheList niches={niches} trends={trends} />
         </div>
       )}
     </div>

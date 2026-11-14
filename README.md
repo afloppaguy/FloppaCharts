@@ -90,3 +90,11 @@ The owner signs in with `DASH_PASSWORD`. Other people get their own password und
 ## Several people
 
 Settings → People adds extra sign-ins. Each person has their own Claude key, budget, model choice, Roblox keys, connected games and idea chats; nobody sees or spends anyone else's. Market data, tags, the watchlist, notes, the briefing and the gap finder are shared.
+
+## Newer pages
+
+- **Breakouts**: games that went from small to notable in the last 1 to 14 days, measured against the same time of day.
+- **Niche pages**: every niche has its own page with an hourly history chart (recorded by the collector) and its change against yesterday and last week. `npx tsx scripts/backfill-niches.ts` rebuilds that history from stored snapshots.
+- **Tools → Earnings calculator**: Robux to dollars after the marketplace cut and DevEx, and a rough earnings range for any game.
+- **My games**: totals across all connected games (revenue in Robux and dollars, playtime, visits), competitors next to each game, and one-click connect for other games by the same creator.
+- Games are added by typing a name and picking from a list; links and IDs still work.

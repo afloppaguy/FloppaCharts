@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { addToCompare } from "@/app/actions";
 import { CompareChart, type CompareSeries } from "@/components/compare-chart";
+import { GamePicker } from "@/components/game-picker";
 import { GameIcon, Growth, Pace, sessionText } from "@/components/game-table";
 import { PageHeader } from "@/components/page-parts";
 import { now } from "@/lib/db";
@@ -42,14 +43,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         {games.length < MAX && (
           <form action={addToCompare} className="flex items-center">
             <input type="hidden" name="ids" value={games.map((g) => g.universe_id).join(",")} />
-            <input
-              name="ref"
-              required
-              aria-label="Add a game by name, link or ID"
-              placeholder="Add a game: name, link or ID"
-              className="h-8 w-64 rounded-l-lg bg-muted/60 px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <button type="submit" aria-label="Add to comparison" className="inline-flex size-8 items-center justify-center rounded-r-lg bg-muted text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            <GamePicker placeholder="Add a game: type its name" className="w-64" required submitOnPick />
+            <button type="submit" aria-label="Add to comparison" className="ml-1 inline-flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
               <Plus className="size-4" />
             </button>
           </form>

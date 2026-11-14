@@ -9,6 +9,9 @@ export type Actor = "you" | "ai";
 
 /** Accepts a universe ID, a place ID, or any roblox.com/games/... link. */
 export async function resolveUniverse(ref: string): Promise<number> {
+  // A game chosen from the name search arrives as "universe:<id>": nothing to look up.
+  const picked = String(ref).match(/^universe:(\d+)$/);
+  if (picked) return Number(picked[1]);
   const m = String(ref).match(/games\/(\d+)/) ?? String(ref).match(/placeId=(\d+)/i);
   const num = Number(m ? m[1] : String(ref).trim());
   if (!Number.isFinite(num) || num <= 0) throw new Error(`Not a game ID or link: ${ref}`);

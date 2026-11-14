@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowDownRight, ArrowLeft, ArrowUpRight, RefreshCw, X } from "lucide-react";
@@ -8,6 +9,7 @@ import { GameIcon } from "@/components/game-table";
 import { MetricExplorer, SurvivalChart, type ExplorerMetric } from "@/components/metric-explorer";
 import { fmtMetric } from "@/lib/metric-format";
 import { Section } from "@/components/page-parts";
+import { Rivals } from "@/components/rivals";
 import { getApiKey } from "@/lib/ai";
 import { funnel, getFindings, getMyGame, loadDashboard, whatChanged, type Segment, type SegmentSet } from "@/lib/analytics";
 import { pollGames } from "@/lib/collector";
@@ -54,7 +56,7 @@ function Fact({ value, label }: { value: string; label: string }) {
   );
 }
 
-export default async function MyGamePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ days?: string }> }) {
+export default async function MyGamePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ days?: string; rivalError?: string }> }) {
   const id = Number((await params).id);
   const game = Number.isFinite(id) ? await getMyGame(id) : null;
   if (!game) notFound();
@@ -274,6 +276,12 @@ export default async function MyGamePage({ params, searchParams }: { params: Pro
           </div>
         </>
       )}
+
+      <div id="rivals" className="scroll-mt-6">
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Loading competitors…</p>}>
+          <Rivals id={id} error={(await searchParams).rivalError} />
+        </Suspense>
+      </div>
 
       <form action={removeMyGame} className="border-t border-border/60 pt-4">
         <input type="hidden" name="id" value={id} />

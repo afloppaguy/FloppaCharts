@@ -143,6 +143,37 @@ export async function getMyGame(universeId: number) {
   return r[0] ? { ...r[0], api_key: decryptSecret(r[0].api_key) } : null;
 }
 
+/**
+ * Every connected game added together for the last `days` complete days:
+ * revenue, visits, daily players and total hours played.
+ */
+export async function loadTotals(days = 28) {
+  const games = await q<{ universe_id: number; name: string; api_key: string }>(
+    "SELECT g.universe_id, g.name, k.api_key FROM my_games g JOIN rbx_keys k ON k.id = g.key_id WHERE g.owner_id = ? ORDER BY g.added_at DESC",
+    [await uidNow()],
+  );
+  const end = new Date(nowMs());
+  end.setUTCHours(0, 0, 0, 0);
+  const iso = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z");
+  const range = { granularity: "OneDay" as const, startTime: iso(new Date(end.getTime() - days * 86400_000)), endTime: iso(end) };
+  const rows = await pool(games, 2, async (g) => {
+    const id = Number(g.universe_id);
+    const base = { id, name: g.name, revenue: 0, visits: 0, dau: 0, playHours: 0, error: undefined as string | undefined };
+    try {
+      const key = decryptSecret(g.api_key);
+      const get = async (metric: string) => (await queryMetric(key, id, { metric, ...range }))[0]?.points ?? [];
+      const [revenue, visits, dau, minutes] = await Promise.all([get("DailyRevenue"), get("Visits"), get("DailyActiveUsers"), get("AveragePlayTimeMinutesPerDAU")]);
+      const sum = (pts: { v: number }[]) => pts.reduce((a, p) => a + p.v, 0);
+      const perPlayer = new Map(minutes.map((p) => [p.t, p.v]));
+      return { ...base, revenue: sum(revenue), visits: sum(visits), dau: dau.length ? sum(dau) / dau.length : 0, playHours: dau.reduce((a, p) => a + p.v * (perPlayer.get(p.t) ?? 0), 0) / 60 };
+    } catch (e) {
+      return { ...base, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+  const total = (k: "revenue" | "visits" | "dau" | "playHours") => rows.reduce((a, r) => a + r[k], 0);
+  return { days, games: rows, revenue: total("revenue"), visits: total("visits"), dau: total("dau"), playHours: total("playHours") };
+}
+
 const NICE: Record<string, string> = {
   RAQI_RESERVED_DIMENSION_VALUES_UNKNOWN: "Unknown",
   SponsoredAds: "Sponsored ads",

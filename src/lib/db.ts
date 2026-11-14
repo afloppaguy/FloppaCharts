@@ -186,6 +186,25 @@ const SCHEMA = [
     url TEXT NOT NULL,
     fetched_at INTEGER NOT NULL
   )`,
+  // One row per niche per hour: how big the group was at that time.
+  `CREATE TABLE IF NOT EXISTS niche_history (
+    kind TEXT NOT NULL,
+    term TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    games INTEGER NOT NULL,
+    hot INTEGER,
+    fresh INTEGER,
+    players INTEGER NOT NULL,
+    PRIMARY KEY (kind, term, ts)
+  ) WITHOUT ROWID`,
+  `CREATE INDEX IF NOT EXISTS niche_history_ts ON niche_history(ts)`,
+  // Competitors chosen for one of your own games.
+  `CREATE TABLE IF NOT EXISTS rivals (
+    game_id INTEGER NOT NULL,
+    rival_id INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (game_id, rival_id)
+  ) WITHOUT ROWID`,
   `CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

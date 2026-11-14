@@ -11,7 +11,7 @@ import { PageHeader, Presets, Section } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { num } from "@/lib/format";
-import { getRisingNiches, nicheHref, type Niche } from "@/lib/niches";
+import { getRisingNiches, nichePage, type Niche } from "@/lib/niches";
 import { getStatus, listGames } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ export default async function HomePage() {
           <Section title="Rising niches" hint="Groups where several games are hot at once" href="/niches">
             <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
               {niches.map((n: Niche) => (
-                <Link key={`${n.kind}:${n.term}`} href={nicheHref(n)} className="-mx-2 rounded-lg px-2 py-2 hover:bg-muted/50">
+                <Link key={`${n.kind}:${n.term}`} href={nichePage(n)} className="-mx-2 rounded-lg px-2 py-2 hover:bg-muted/50">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium capitalize">{n.term}</span>
                     <span className="shrink-0 text-xs text-emerald-400 tabular-nums">

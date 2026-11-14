@@ -4,6 +4,8 @@ try {
   process.loadEnvFile(".env.local");
 } catch {}
 
+export {};
+
 async function main() {
   const { ready, q } = await import("../src/lib/db");
   const { runAs } = await import("../src/lib/scope");

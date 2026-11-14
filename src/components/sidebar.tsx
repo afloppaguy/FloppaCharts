@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { validSession } from "@/proxy";
-import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Settings, Shapes, Sparkles, Wrench } from "lucide-react";
+import { Bell, Cat, ChartLine, Compass, Eye, GitCompareArrows, History, Home, Lightbulb, Rocket, Settings, Shapes, Sparkles, Wrench } from "lucide-react";
 import { NavLink } from "@/components/quick-actions";
 import { now } from "@/lib/db";
 import { ago, num } from "@/lib/format";
@@ -22,6 +22,7 @@ export async function Sidebar() {
   const links: Item[] = [
     { href: "/", match: "/", label: "Home", icon: Home },
     { href: "/games", match: "/games", label: "Explore", icon: Compass },
+    { href: "/breakouts", match: "/breakouts", label: "Breakouts", icon: Rocket },
     { href: "/niches", match: "/niches", label: "Niches", icon: Shapes },
     { href: "/compare", match: "/compare", label: "Compare", icon: GitCompareArrows },
     { href: "/watchlist", match: "/watchlist", label: "Watchlist", icon: Eye },

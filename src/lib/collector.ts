@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { InStatement } from "@libsql/client";
 import { db, kvGet, kvSet, now, q, ready, run } from "./db";
+import { recordNicheHistory } from "./niche-history";
 import { getCharts, getDetails, getVotes, stats, type ChartGame, type GameDetail } from "./roblox";
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -329,6 +330,7 @@ export async function cycle(minutes: number) {
   await scanNew("7d", 24 * 7, 10, 3000, end);
   await pollDue(end);
   await thinHistory();
+  await recordNicheHistory().catch((e) => log("niche history failed:", e instanceof Error ? e.message : e));
   await kvSet("last_cycle", JSON.stringify({ ts: now(), requests: stats.requests, rateLimited: stats.rateLimited }));
   log(`cycle done: ${stats.requests} requests, ${stats.rateLimited} rate-limited`);
 }

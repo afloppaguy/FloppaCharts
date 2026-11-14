@@ -154,6 +154,19 @@ export async function getNiches(kind?: NicheKind): Promise<Niche[]> {
   return kind ? cache.niches.filter((n) => n.kind === kind) : cache.niches;
 }
 
+/** Niches straight from the database, skipping every cache. For the collector. */
+export async function freshNiches(): Promise<Niche[]> {
+  rowCache = null;
+  return build();
+}
+
+/** One niche by kind and name, or null when it is not on the list. */
+export async function getNiche(kind: NicheKind, term: string): Promise<Niche | null> {
+  return (await getNiches(kind)).find((n) => n.term === term) ?? null;
+}
+
+export const nichePage = (n: Pick<Niche, "kind" | "term">) => `/niches/${n.kind}/${encodeURIComponent(n.term)}`;
+
 /** The handful of niches worth showing on the home page, across all kinds. */
 export async function getRisingNiches(limit = 9): Promise<Niche[]> {
   const all = await getNiches();

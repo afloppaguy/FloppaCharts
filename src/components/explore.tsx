@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { addGameAction } from "@/app/actions";
 import { FilterBar } from "@/components/filter-bar";
+import { GamePicker } from "@/components/game-picker";
 import { currentView, Games } from "@/components/game-table";
 import { PageHeader, Presets } from "@/components/page-parts";
 import { ViewToggle } from "@/components/quick-actions";
@@ -44,16 +45,11 @@ export async function Explore({ sp, watch }: { sp: Record<string, string | strin
         <div className="flex items-center gap-2">
           {!watch && (
             <form action={addGameAction} className="flex items-center">
-              <input
-                name="ref"
-                aria-label="Add a game by Roblox link or ID"
-                placeholder="Add game by link or ID"
-                className="h-8 w-56 rounded-l-lg bg-muted/60 px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              />
+              <GamePicker placeholder="Add a game: type its name" className="w-60" />
               <button
                 type="submit"
                 aria-label="Add game"
-                className="inline-flex size-8 items-center justify-center rounded-r-lg bg-muted text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-1 inline-flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Plus className="size-4" />
               </button>

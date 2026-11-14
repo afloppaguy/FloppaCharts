@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ImageIcon } from "lucide-react";
+import { Coins, ImageIcon } from "lucide-react";
 import { PageHeader } from "@/components/page-parts";
 
 const TOOLS = [
@@ -8,6 +8,12 @@ const TOOLS = [
     icon: ImageIcon,
     name: "Thumbnail tester",
     blurb: "Drop in an icon or thumbnail and see it at a random spot among popular games' artwork, on desktop and phone, to judge whether it stands out.",
+  },
+  {
+    href: "/tools/earnings",
+    icon: Coins,
+    name: "Earnings calculator",
+    blurb: "Turn Robux into real money after Roblox's cut and DevEx, and get a rough range for what any tracked game earns from its visits.",
   },
 ];
 

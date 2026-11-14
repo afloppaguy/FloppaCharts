@@ -171,10 +171,11 @@ export async function connectMyGame(formData: FormData) {
   const ref = String(formData.get("ref") ?? "").trim();
   let error = "";
   try {
-    if (!ref) throw new Error("Paste the game's Roblox link or ID.");
+    if (!ref) throw new Error("Type your game's name and pick it from the list.");
     if (!apiKey && !existing) throw new Error("Paste an API key, or pick one you already added.");
     const uid = await uidNow();
-    const universeId = await ops.resolveUniverse(ref);
+    // A typed name that was not picked from the list is matched against tracked games.
+    const universeId = /^universe:\d+$/.test(ref) || /^\d+$/.test(ref) || /roblox\.com/i.test(ref) ? await ops.resolveUniverse(ref) : await findGame(ref);
     let keyId = existing;
     if (apiKey) {
       const r = await run("INSERT INTO rbx_keys (label, api_key, created_at, owner_id) VALUES (?, ?, ?, ?)", [label.slice(0, 60), encryptSecret(apiKey), now(), uid]);
@@ -186,7 +187,7 @@ export async function connectMyGame(formData: FormData) {
     if (taken[0] && Number(taken[0].owner_id) !== uid) throw new Error("Someone else on this dashboard has already connected that game.");
     let name = `Game ${universeId}`;
     try {
-      await ops.addGame(String(universeId), "you");
+      await ops.addGame(`universe:${universeId}`, "you");
       const g = await q<{ name: string }>("SELECT name FROM games WHERE universe_id = ?", [universeId]);
       if (g[0]?.name) name = g[0].name;
     } catch {
@@ -207,7 +208,10 @@ export async function connectMyGame(formData: FormData) {
 export async function removeMyGame(formData: FormData) {
   const id = Number(formData.get("id"));
   const gone = await run("DELETE FROM my_games WHERE universe_id = ? AND owner_id = ?", [id, await uidNow()]);
-  if (gone.rowsAffected) await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
+  if (gone.rowsAffected) {
+    await run("DELETE FROM metric_cache WHERE universe_id = ?", [id]);
+    await run("DELETE FROM rivals WHERE game_id = ?", [id]);
+  }
   revalidatePath("/my-games");
   redirect("/my-games");
 }
@@ -341,21 +345,54 @@ export async function logoutAction() {
 
 // ---- Compare ----
 
+/** A game from whatever was typed or picked: a name-search pick, a link, an ID, or part of a name. Makes sure it is tracked. */
+async function findGame(ref: string): Promise<number> {
+  if (/^universe:\d+$/.test(ref) || /^\d+$/.test(ref) || /roblox\.com/i.test(ref)) {
+    const id = await ops.resolveUniverse(ref);
+    const known = await q("SELECT 1 FROM games WHERE universe_id = ?", [id]);
+    return known.length ? id : ops.addGame(`universe:${id}`, "you");
+  }
+  const hit = await q<{ universe_id: number }>("SELECT universe_id FROM games WHERE name LIKE ? ORDER BY playing DESC LIMIT 1", [`%${ref}%`]);
+  if (!hit[0]) throw new Error(`No tracked game matches "${ref}". Pick it from the list, or paste its Roblox link.`);
+  return Number(hit[0].universe_id);
+}
+
+const MAX_RIVALS = 4;
+
+export async function addRival(formData: FormData) {
+  const game = Number(formData.get("game"));
+  const ref = String(formData.get("ref") ?? "").trim();
+  if (!Number.isInteger(game) || !(await getMyGame(game))) return; // not one of your games
+  let error = "";
+  try {
+    if (!ref) throw new Error("Type a game's name and pick it from the list.");
+    const rival = await findGame(ref);
+    if (rival === game) throw new Error("That is your own game.");
+    const have = await q<{ n: number }>("SELECT COUNT(*) AS n FROM rivals WHERE game_id = ?", [game]);
+    if (Number(have[0].n) >= MAX_RIVALS) throw new Error(`Up to ${MAX_RIVALS} rivals. Remove one first.`);
+    await run("INSERT OR IGNORE INTO rivals (game_id, rival_id, added_at) VALUES (?, ?, ?)", [game, rival, now()]);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  revalidatePath(`/my-games/${game}`);
+  redirect(`/my-games/${game}${error ? `?rivalError=${encodeURIComponent(error)}` : ""}#rivals`);
+}
+
+export async function removeRival(formData: FormData) {
+  const game = Number(formData.get("game"));
+  const rival = Number(formData.get("rival"));
+  if (!Number.isInteger(game) || !Number.isInteger(rival) || !(await getMyGame(game))) return;
+  await run("DELETE FROM rivals WHERE game_id = ? AND rival_id = ?", [game, rival]);
+  revalidatePath(`/my-games/${game}`);
+}
+
 export async function addToCompare(formData: FormData) {
   const ids = String(formData.get("ids") ?? "").split(",").filter(Boolean);
   const ref = String(formData.get("ref") ?? "").trim();
   let error = "";
   try {
     let id: number | null = null;
-    if (/^\d+$/.test(ref) || /roblox\.com/i.test(ref)) {
-      id = await ops.resolveUniverse(ref);
-      const known = await q("SELECT 1 FROM games WHERE universe_id = ?", [id]);
-      if (!known.length) id = await ops.addGame(ref, "you");
-    } else {
-      const hit = await q<{ universe_id: number }>("SELECT universe_id FROM games WHERE name LIKE ? ORDER BY playing DESC LIMIT 1", [`%${ref}%`]);
-      if (!hit[0]) throw new Error(`No tracked game matches "${ref}". Paste its Roblox link to add it.`);
-      id = Number(hit[0].universe_id);
-    }
+    id = await findGame(ref);
     if (!ids.includes(String(id))) ids.push(String(id));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
