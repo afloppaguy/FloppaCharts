@@ -31,6 +31,16 @@ function fail(message: string): never {
     if (!token) fail("The TURSO_AUTH_TOKEN secret is empty or missing.");
     if (!token.startsWith("eyJ")) fail(`The TURSO_AUTH_TOKEN secret does not look like a Turso token (${token.length} characters). Paste only the token itself.`);
   }
+  // A pass that hangs (a database or Roblox connection that never answers)
+  // used to run into GitHub's job time limit, which cancels the job and with
+  // it the step that starts the next run, so collecting stopped for good.
+  // End the pass ourselves instead: what was collected so far is already saved.
+  if (!loop) {
+    setTimeout(() => {
+      console.log(process.env.GITHUB_ACTIONS ? "::warning::This pass ran long and was ended early. The next run carries on." : "Pass ran long; ending it.");
+      process.exit(0);
+    }, (minutes + 5) * 60_000).unref();
+  }
   do {
     try {
       await cycle(minutes);
