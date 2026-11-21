@@ -31,6 +31,20 @@ function fail(message: string): never {
     if (!token) fail("The TURSO_AUTH_TOKEN secret is empty or missing.");
     if (!token.startsWith("eyJ")) fail(`The TURSO_AUTH_TOKEN secret does not look like a Turso token (${token.length} characters). Paste only the token itself.`);
   }
+  // If the database refuses writes (free plan limit reached), do not burn a
+  // run failing: say so, wait most of the run, and exit cleanly so the chain
+  // carries on and picks up again as soon as writes work.
+  try {
+    const { db } = await import("../src/lib/db");
+    await db().execute("INSERT INTO kv (key, value) VALUES ('write_probe', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+  } catch (e) {
+    if (/BLOCKED|writes are blocked/i.test(String(e))) {
+      console.log(process.env.GITHUB_ACTIONS ? "::warning::Turso is blocking writes (monthly write limit reached). Waiting; collection resumes by itself when the limit resets." : "Turso is blocking writes (limit reached).");
+      await new Promise((r) => setTimeout(r, 20 * 60_000));
+      process.exit(0);
+    }
+    // any other problem: let the normal pass report it
+  }
   // A pass that hangs (a database or Roblox connection that never answers)
   // used to run into GitHub's job time limit, which cancels the job and with
   // it the step that starts the next run, so collecting stopped for good.

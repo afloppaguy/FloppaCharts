@@ -14,13 +14,18 @@ const DEVICES = ["high_end_phone", "low_end_phone", "console", "high_end_tablet"
 const COUNTRIES = ["us", "br", "ph", "gb", "mx", "id", "de", "fr", "jp", "kr", "in", "tr", "ru", "vn", "th", "es", "it", "pl", "ca", "au", "ar", "co", "sa", "eg", "my"];
 
 /** How often a game is re-polled, by how interesting it currently is. */
+// Every poll writes a few rows, and the free database plan allows 10 million
+// rows written a month (about 330,000 a day). These intervals keep the
+// collector near 150,000 a day. Polling often is saved for what is worth it:
+// games you watch and games that are climbing.
 function pollInterval(g: { watched: boolean; inCharts: boolean; playing: number; visits: number; score: number; createdAt: number | null }) {
-  if (g.watched || g.inCharts || g.playing >= 1000 || g.score >= 5) return 14 * 60;
-  if (g.playing >= 100) return 3600;
-  if (g.playing >= 10) return 6 * 3600;
+  if (g.watched || g.score >= 5) return 30 * 60;
+  if (g.inCharts || g.playing >= 1000) return 2 * 3600;
+  if (g.playing >= 100) return 8 * 3600;
+  if (g.playing >= 10) return 24 * 3600;
   const ageDays = g.createdAt ? (now() - g.createdAt) / 86400 : 0;
-  if (g.playing === 0 && g.visits < 1000 && ageDays > 14) return 7 * 86400;
-  return 86400;
+  if (g.playing === 0 && g.visits < 1000 && ageDays > 14) return 14 * 86400;
+  return 3 * 86400;
 }
 
 export function riseScore(playing: number, base: number | null) {
@@ -82,12 +87,14 @@ export async function discoverCharts(extraViews = 2) {
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'charts', ?, 0)`,
         args: [id, g.rootPlaceId ?? null, g.name ?? "", g.genreL1 ?? null, g.playerCount ?? 0, g.totalUpVotes ?? 0, g.totalDownVotes ?? 0, g.playerCount ?? 0, g.playerCount ?? 0, charts, t, t],
       });
-    } else if (primary.has(id) && (ex.charts !== charts || (ex.charts_seen ?? 0) < t - 3600)) {
-      stmts.push({ sql: "UPDATE games SET charts = ?, charts_seen = ?, next_poll = MIN(next_poll, ?) WHERE universe_id = ?", args: [charts, t, t + 900, id] });
+    } else if (primary.has(id) && (ex.charts !== charts || (ex.charts_seen ?? 0) < t - 3 * 3600)) {
+      // A game that just joined a chart gets looked at soon; one that is only being re-confirmed does not.
+      const joined = ex.charts !== charts && ex.charts === "[]";
+      stmts.push({ sql: `UPDATE games SET charts = ?, charts_seen = ?${joined ? ", next_poll = MIN(next_poll, ?)" : ""} WHERE universe_id = ?`, args: joined ? [charts, t, t + 900, id] : [charts, t, id] });
     }
   }
   // Games that fell off every chart.
-  stmts.push({ sql: "UPDATE games SET charts = '[]' WHERE charts != '[]' AND charts_seen < ?", args: [t - 3 * 3600] });
+  stmts.push({ sql: "UPDATE games SET charts = '[]' WHERE charts != '[]' AND charts_seen < ?", args: [t - 8 * 3600] });
   for (const part of chunk(stmts, 200)) await db().batch(part, "write");
   log(`charts: ${views.length} views, ${seen.size} games seen, ${added} new`);
   return { seen: seen.size, added };
@@ -186,8 +193,8 @@ async function saveDetails(details: GameDetail[], votes: Map<number, { up: numbe
         source ?? "charts", t, t, next, live.rate, live.pace, live.session,
       ],
     });
-    // Dead games are not worth a snapshot row every day.
-    if (d.playing > 0 || !b) {
+    // Dead and near-empty games are not worth a snapshot row on every poll.
+    if (d.playing >= 10 || !b) {
       stmts.push({
         sql: "INSERT OR REPLACE INTO snapshots (universe_id, ts, playing, visits, favorites, up_votes, down_votes, src) VALUES (?, ?, ?, ?, ?, ?, ?, 'collector')",
         args: [d.id, t, d.playing, d.visits, d.favoritedCount ?? 0, v?.up ?? null, v?.down ?? null],
@@ -309,13 +316,12 @@ export async function scanNew(name: string, lagHours: number, minPlaying: number
 }
 
 /** Thin old history so storage and the write budget stay small. */
+/**
+ * Used to delete most old snapshots to save space. Deleting counts as writing,
+ * and storage is plentiful at the slower polling rate, so old history is kept.
+ */
 export async function thinHistory() {
-  const last = Number((await kvGet("last_thin")) ?? "0");
-  if (now() - last < 86400) return;
-  const t = now();
-  await run("DELETE FROM snapshots WHERE src = 'collector' AND ts < ? AND (ts % 3600) >= 900", [t - 14 * 86400]);
-  await run("DELETE FROM snapshots WHERE src = 'collector' AND ts < ? AND (ts % 86400) >= 3600", [t - 90 * 86400]);
-  await kvSet("last_thin", String(t));
+  // intentionally does nothing
 }
 
 /** One full collection pass, bounded by a time budget in minutes. */

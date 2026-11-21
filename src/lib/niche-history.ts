@@ -1,12 +1,12 @@
 import type { InStatement } from "@libsql/client";
-import { db, kvGet, kvSet, now, q, run } from "./db";
+import { db, kvGet, kvSet, now, q } from "./db";
 import { freshNiches, type Niche, type NicheKind } from "./niches";
 
 // How each niche changes over time. The collector writes one row per niche per
 // hour; pages read them back as a chart and as "against yesterday / last week".
 
 const HOUR = 3600;
-const KEYWORD_LIMIT = 400; // title words are endless; keep the biggest
+const KEYWORD_LIMIT = 120; // title words are endless; keep the biggest (each row is a database write)
 
 /** Called by the collector after each cycle. Writes at most once per hour. */
 export async function recordNicheHistory(): Promise<number> {
@@ -23,8 +23,6 @@ export async function recordNicheHistory(): Promise<number> {
   }));
   for (let i = 0; i < stmts.length; i += 200) await db().batch(stmts.slice(i, i + 200), "write");
   await kvSet("niche_history_at", String(bucket));
-  // Older than 30 days: keep one row every six hours.
-  await run("DELETE FROM niche_history WHERE ts < ? AND (ts % 21600) != 0", [bucket - 30 * 86400]);
   return stmts.length;
 }
 

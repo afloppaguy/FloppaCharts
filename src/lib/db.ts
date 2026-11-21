@@ -1,5 +1,6 @@
 import { createClient, type Client, type InValue } from "@libsql/client";
 import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { nowMs, syncClock } from "./clock";
 
 // One database for everything. Locally it is a SQLite file; in production
@@ -50,9 +51,8 @@ const SCHEMA = [
     backfilled INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS games_next_poll ON games(next_poll)`,
-  `CREATE INDEX IF NOT EXISTS games_playing ON games(playing)`,
-  `CREATE INDEX IF NOT EXISTS games_rise ON games(rise_score)`,
-  `CREATE INDEX IF NOT EXISTS games_created ON games(created_at)`,
+  // Only next_poll keeps an index: every extra index is one more row written on
+  // every game update, and the free database plan caps rows written per month.
   `CREATE TABLE IF NOT EXISTS snapshots (
     universe_id INTEGER NOT NULL,
     ts INTEGER NOT NULL,
@@ -222,36 +222,54 @@ const DEFAULT_PRESETS: { name: string; description: string; filters: Record<stri
   { name: "Newly spotted", description: "Games the tracker found most recently", filters: { min: "10", sort: "seen" } },
 ];
 
+// Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS".
+const ADDED: [string, string][] = [
+  ["games", "visit_rate REAL"],
+  ["games", "pace REAL"],
+  ["games", "est_session_min REAL"],
+  ["chats", "summary TEXT"],
+  ["chats", "cost_usd REAL NOT NULL DEFAULT 0"],
+  ["chats", "model TEXT"],
+  ["chats", "busy_until INTEGER NOT NULL DEFAULT 0"],
+  ["chats", "idea_name TEXT"],
+  // Per-person ownership: 0 is the owner, anything else a member number.
+  ["chats", "user_id INTEGER NOT NULL DEFAULT 0"],
+  ["ai_usage", "user_id INTEGER NOT NULL DEFAULT 0"],
+  ["rbx_keys", "owner_id INTEGER NOT NULL DEFAULT 0"],
+  ["my_games", "owner_id INTEGER NOT NULL DEFAULT 0"],
+  ["chats", "pitch TEXT"],
+];
+const DROPPED_INDEXES = ["games_playing", "games_rise", "games_created"];
+
+/** Changes whenever the schema, columns, dropped indexes or built-in presets change. */
+const SCHEMA_VERSION = createHash("sha1").update(JSON.stringify([SCHEMA, ADDED, DROPPED_INDEXES, DEFAULT_PRESETS.map((p) => p.name)])).digest("hex").slice(0, 12);
+
+export const isBlocked = (e: unknown) => /BLOCKED|writes are blocked/i.test(String(e));
+
 export function ready(): Promise<void> {
   if (!g.__radarSchema) {
     g.__radarSchema = (async () => {
       const c = db();
       await syncClock();
+      // Already set up for this version: touch nothing. (Every statement below is
+      // a write, and a database whose write quota ran out refuses them all.)
+      try {
+        const v = await c.execute("SELECT value FROM kv WHERE key = 'schema_version'");
+        if (String(v.rows[0]?.value ?? "") === SCHEMA_VERSION) return;
+      } catch {
+        // no kv table yet: a fresh database
+      }
+      try {
       for (const sql of SCHEMA) await c.execute(sql);
-      // Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS".
-      const added: [string, string][] = [
-        ["games", "visit_rate REAL"],
-        ["games", "pace REAL"],
-        ["games", "est_session_min REAL"],
-        ["chats", "summary TEXT"],
-        ["chats", "cost_usd REAL NOT NULL DEFAULT 0"],
-        ["chats", "model TEXT"],
-        ["chats", "busy_until INTEGER NOT NULL DEFAULT 0"],
-        ["chats", "idea_name TEXT"],
-        // Per-person ownership: 0 is the owner, anything else a member number.
-        ["chats", "user_id INTEGER NOT NULL DEFAULT 0"],
-        ["ai_usage", "user_id INTEGER NOT NULL DEFAULT 0"],
-        ["rbx_keys", "owner_id INTEGER NOT NULL DEFAULT 0"],
-        ["my_games", "owner_id INTEGER NOT NULL DEFAULT 0"],
-        ["chats", "pitch TEXT"],
-      ];
-      for (const [table, col] of added) {
+      for (const [table, col] of ADDED) {
         try {
           await c.execute(`ALTER TABLE ${table} ADD COLUMN ${col}`);
-        } catch {
+        } catch (e) {
+          if (isBlocked(e)) throw e;
           // already there
         }
       }
+      for (const name of DROPPED_INDEXES) await c.execute(`DROP INDEX IF EXISTS ${name}`);
       // Built-in presets are added once each; deleting one keeps it deleted.
       const seeded = new Set<string>(JSON.parse(String((await c.execute("SELECT value FROM kv WHERE key = 'seeded_presets'")).rows[0]?.value ?? "[]")));
       const have = new Set((await c.execute("SELECT name FROM presets")).rows.map((r) => String(r.name)));
@@ -266,6 +284,12 @@ export function ready(): Promise<void> {
         seeded.add(p.name);
       }
       await c.execute({ sql: "INSERT INTO kv (key, value) VALUES ('seeded_presets', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [JSON.stringify([...seeded])] });
+      await c.execute({ sql: "INSERT INTO kv (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", args: [SCHEMA_VERSION] });
+      } catch (e) {
+        // Writes are refused (plan limit reached): the data can still be read, so carry on.
+        if (!isBlocked(e)) throw e;
+        console.warn("database is read-only (write limit reached); skipping setup");
+      }
     })();
   }
   return g.__radarSchema;
