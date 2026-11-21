@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 const field = "h-8 rounded-lg bg-muted/60 px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
 const mask = (k: string) => `${k.slice(0, 10)}…${k.slice(-4)}`;
 
-export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const [{ error }, user] = await Promise.all([searchParams, currentUser()]);
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; blocked?: string }> }) {
+  const [{ error, blocked }, user] = await Promise.all([searchParams, currentUser()]);
   const owner = !!user?.owner;
   const members = owner ? await q<{ id: number; name: string; created_at: number; last_login: number | null }>("SELECT id, name, created_at, last_login FROM members ORDER BY id") : [];
   const [key, budget, byPurpose, autoTag, robloxKeys] = await Promise.all([
@@ -36,6 +36,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="mx-auto grid max-w-2xl gap-10">
       <PageHeader title="Settings" />
+      {blocked && <p className="rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-300">{blocked}</p>}
       {!owner && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">Signed in as {user?.name}. The keys, budget and model here are your own; nobody else on this dashboard sees or uses them.</p>}
 
       <fieldset className="contents">

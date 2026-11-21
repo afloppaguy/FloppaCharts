@@ -7,7 +7,7 @@ import { explainAiError, getAiSettings, getBudget, setAiSettings, setChosenModel
 import { analyzeGame, getMyGame } from "@/lib/analytics";
 import { deleteChat } from "@/lib/chat";
 import { findGaps, generateBriefing } from "@/lib/insights";
-import { kvSet, now, q, run } from "@/lib/db";
+import { isBlocked, kvSet, now, q, run } from "@/lib/db";
 import * as ops from "@/lib/ops";
 import { universeName } from "@/lib/roblox";
 import { encryptSecret, hashPassword, rateLimit, safeEqual, verifyPassword } from "@/lib/security";
@@ -100,17 +100,33 @@ export async function setView(view: "grid" | "list") {
   revalidatePath("/", "layout");
 }
 
+/** Runs a Settings change; if the database is refusing writes (plan limit), say so on the page instead of crashing it. */
+async function settingsWrite(fn: () => Promise<void>) {
+  let error = "";
+  try {
+    await fn();
+  } catch (e) {
+    if (!isBlocked(e)) throw e;
+    error = "The database has reached its free monthly write limit, so nothing can be saved or removed right now. It works again when the limit resets.";
+  }
+  revalidatePath("/settings");
+  revalidatePath("/my-games");
+  if (error) redirect(`/settings?blocked=${encodeURIComponent(error)}`);
+}
+
 // ---- Claude key and budget ----
 
 export async function saveClaudeKey(formData: FormData) {
   const key = String(formData.get("key") ?? "").trim();
-  if (key && key.length <= 400) await kvSet(scoped("anthropic_key", await uidNow()), encryptSecret(key));
-  revalidatePath("/settings");
+  await settingsWrite(async () => {
+    if (key && key.length <= 400) await kvSet(scoped("anthropic_key", await uidNow()), encryptSecret(key));
+  });
 }
 
 export async function removeClaudeKey() {
-  await run("DELETE FROM kv WHERE key = ?", [scoped("anthropic_key", await uidNow())]);
-  revalidatePath("/settings");
+  await settingsWrite(async () => {
+    await run("DELETE FROM kv WHERE key = ?", [scoped("anthropic_key", await uidNow())]);
+  });
 }
 
 export async function saveBudget(formData: FormData) {
@@ -247,9 +263,9 @@ export async function dismissFinding(formData: FormData) {
 export async function addRobloxKey(formData: FormData) {
   const label = String(formData.get("label") ?? "").trim().slice(0, 60) || "My key";
   const apiKey = String(formData.get("apiKey") ?? "").trim();
-  if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at, owner_id) VALUES (?, ?, ?, ?)", [label, encryptSecret(apiKey), now(), await uidNow()]);
-  revalidatePath("/settings");
-  revalidatePath("/my-games");
+  await settingsWrite(async () => {
+    if (apiKey && apiKey.length <= 2000) await run("INSERT INTO rbx_keys (label, api_key, created_at, owner_id) VALUES (?, ?, ?, ?)", [label, encryptSecret(apiKey), now(), await uidNow()]);
+  });
 }
 
 /** Deleting a key also disconnects the games that were using it. */
