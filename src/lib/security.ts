@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { now, q, run } from "./db";
+import { isBlocked, now, q, run } from "./db";
 
 // Rate limiting and secret handling for the dashboard's server side.
 
@@ -23,13 +23,19 @@ export function safeEqual(a: string, b: string): boolean {
  */
 export async function rateLimit(key: string, limit: number, windowSec: number): Promise<{ ok: boolean; retryAfter: number }> {
   const t = now();
-  await run(
-    `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
-     ON CONFLICT(key) DO UPDATE SET
-       count = CASE WHEN window_start <= ? THEN 1 ELSE count + 1 END,
-       window_start = CASE WHEN window_start <= ? THEN ? ELSE window_start END`,
-    [key, t, t - windowSec, t - windowSec, t],
-  );
+  try {
+    await run(
+      `INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 1)
+       ON CONFLICT(key) DO UPDATE SET
+         count = CASE WHEN window_start <= ? THEN 1 ELSE count + 1 END,
+         window_start = CASE WHEN window_start <= ? THEN ? ELSE window_start END`,
+      [key, t, t - windowSec, t - windowSec, t],
+    );
+  } catch (e) {
+    // The database refuses writes (plan limit reached): count in memory instead, so sign-in and the rest keep working.
+    if (!isBlocked(e)) throw e;
+    return { ok: memoryLimit(key, limit, windowSec), retryAfter: windowSec };
+  }
   const r = await q<{ window_start: number; count: number }>("SELECT window_start, count FROM rate_limits WHERE key = ?", [key]);
   const count = Number(r[0]?.count ?? 1);
   return { ok: count <= limit, retryAfter: Math.max(1, Number(r[0]?.window_start ?? t) + windowSec - t) };
@@ -42,7 +48,11 @@ export async function rateCount(key: string, windowSec: number): Promise<number>
 }
 
 export async function rateReset(key: string) {
-  await run("DELETE FROM rate_limits WHERE key = ?", [key]);
+  try {
+    await run("DELETE FROM rate_limits WHERE key = ?", [key]);
+  } catch (e) {
+    if (!isBlocked(e)) throw e;
+  }
 }
 
 /**

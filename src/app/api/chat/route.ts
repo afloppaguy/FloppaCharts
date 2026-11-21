@@ -1,7 +1,11 @@
 import { getApiKey } from "@/lib/ai";
 import { createChat, getChat, runChatTurn, type ChatEvent } from "@/lib/chat";
 import { runAs, uidNow } from "@/lib/scope";
+import { isBlocked } from "@/lib/db";
 import { rateLimit, tooMany } from "@/lib/security";
+
+const blockedMessage = "The database has reached its free monthly write limit, and a chat has to save what you type, so it cannot run right now. It works again when the limit resets, or after upgrading the database plan.";
+const asError = (message: string) => new Response(JSON.stringify({ type: "error", message }) + "\n", { headers: { "Content-Type": "application/x-ndjson" } });
 
 // Streams one chat turn as newline-delimited JSON events.
 // Limits: 12 messages a minute and 300 a day, on top of the monthly budget.
@@ -10,6 +14,16 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
+  try {
+    return await handle(req);
+  } catch (e) {
+    if (isBlocked(e)) return asError(blockedMessage);
+    console.error("chat failed:", e);
+    return asError("Something went wrong starting the chat. Try again in a moment.");
+  }
+}
+
+async function handle(req: Request) {
   const body = (await req.json().catch(() => null)) as { chatId?: number; message?: string; model?: string } | null;
   const message = body?.message?.trim();
   if (!message) return Response.json({ error: "Empty message" }, { status: 400 });
